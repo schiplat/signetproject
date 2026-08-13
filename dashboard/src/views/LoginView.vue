@@ -1,0 +1,320 @@
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import UiButton from "@/components/ui/UiButton.vue";
+import { useQrDataUrl } from "@/composables/useQrDataUrl";
+import {
+  mfaEnrollConfirm,
+  mfaEnrollStart,
+  verifyMfa,
+  type PublicUser,
+} from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
+import { loginWithPasskey } from "@/composables/usePasskeys";
+
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+
+type Step = "password" | "mfa" | "enroll" | "recovery_codes";
+
+const step = ref<Step>("password");
+const email = ref("");
+const password = ref("");
+const showPassword = ref(false);
+const error = ref("");
+const loading = ref(false);
+
+const mfaCode = ref("");
+const mfaMethod = ref<"totp" | "recovery">("totp");
+
+const enrollSecret = ref("");
+const enrollUri = ref("");
+const enrollCode = ref("");
+const { dataUrl: qrUrl } = useQrDataUrl(enrollUri);
+
+const recoveryCodes = ref<string[]>([]);
+const recoveryAck = ref(false);
+
+// Only allow return_to to bounce back to the OIDC endpoints; reject absolute
+// (https://) and protocol-relative (//) URLs. Final redirect targets are still
+// validated server-side against each client's allow-list.
+function safeOAuthReturn(returnTo: string): string {
+  if (!returnTo || returnTo.includes("://") || returnTo.startsWith("//")) return "";
+  if (!returnTo.startsWith("/oauth/authorize") && !returnTo.startsWith("/oauth/end_session")) return "";
+  return returnTo;
+}
+
+async function finishWithUser(user: PublicUser) {
+  auth.completeLogin(user);
+  const raw = typeof route.query.return_to === "string" ? route.query.return_to : "";
+  const oauthReturn = safeOAuthReturn(raw);
+  if (oauthReturn) {
+    window.location.href = oauthReturn;
+    return;
+  }
+  const fallback =
+    user.role === "admin" || user.role === "manager" ? "/admin/overview" : "/activity";
+  await router.replace(raw && !raw.startsWith("/login") ? raw : fallback);
+}
+
+async function handleLogin() {
+  error.value = "";
+  loading.value = true;
+  try {
+    const res = await auth.login(email.value.trim(), password.value);
+    if (res.status === "ok") {
+      await finishWithUser(res.user);
+      return;
+    }
+    if (res.status === "mfa_required") {
+      step.value = "mfa";
+      mfaCode.value = "";
+      mfaMethod.value = "totp";
+      return;
+    }
+    if (res.status === "enroll_required") {
+      const started = await mfaEnrollStart();
+      enrollSecret.value = started.secret;
+      enrollUri.value = started.otpauth_uri;
+      enrollCode.value = "";
+      step.value = "enroll";
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Login failed";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function handlePasskeyLogin() {
+  error.value = "";
+  loading.value = true;
+  try {
+    const user = await loginWithPasskey(email.value.trim());
+    await finishWithUser(user);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Passkey sign-in failed";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function handleVerify() {
+  error.value = "";
+  loading.value = true;
+  try {
+    const res = await verifyMfa({ code: mfaCode.value.trim(), method: mfaMethod.value });
+    await finishWithUser(res.user);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Verification failed";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function handleEnrollConfirm() {
+  error.value = "";
+  loading.value = true;
+  try {
+    const res = await mfaEnrollConfirm(enrollCode.value.trim());
+    recoveryCodes.value = res.recovery_codes;
+    recoveryAck.value = false;
+    auth.completeLogin(res.user);
+    step.value = "recovery_codes";
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Enrollment failed";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function continueAfterRecovery() {
+  if (!recoveryAck.value || !auth.user) return;
+  await finishWithUser(auth.user);
+}
+
+const recoveryText = computed(() => recoveryCodes.value.join("\n"));
+
+async function copyRecovery() {
+  try {
+    await navigator.clipboard.writeText(recoveryText.value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function backToPassword() {
+  step.value = "password";
+  error.value = "";
+}
+</script>
+
+<template>
+  <div class="flex min-h-screen items-center justify-center bg-background px-4">
+    <div class="w-full max-w-sm space-y-6">
+      <div class="space-y-1 text-center">
+        <div class="mb-3 flex justify-center">
+          <span
+            class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-sm font-semibold tracking-wide text-primary-foreground"
+          >
+            Sg
+          </span>
+        </div>
+        <h1 class="text-lg font-semibold tracking-tight">Signet</h1>
+        <p class="type-meta">
+          <template v-if="step === 'password'">Sign in to your identity provider</template>
+          <template v-else-if="step === 'mfa'">Two-factor authentication</template>
+          <template v-else-if="step === 'enroll'">Set up authenticator</template>
+          <template v-else>Save your recovery codes</template>
+        </p>
+      </div>
+
+      <form v-if="step === 'password'" class="space-y-4" @submit.prevent="handleLogin">
+        <div class="space-y-1.5">
+          <label class="type-label">Email</label>
+          <input
+            v-model="email"
+            type="email"
+            autocomplete="username"
+            placeholder="admin@example.com"
+            class="field-input"
+            required
+          />
+        </div>
+        <div class="space-y-1.5">
+          <label class="type-label">Password</label>
+          <div class="relative">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="current-password"
+              placeholder="Enter password"
+              class="field-input pr-14"
+              required
+            />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              @click="showPassword = !showPassword"
+            >
+              {{ showPassword ? "Hide" : "Show" }}
+            </button>
+          </div>
+        </div>
+        <div v-if="error" class="field-error">{{ error }}</div>
+        <UiButton type="submit" class="w-full" :disabled="loading">
+          {{ loading ? "Signing in…" : "Sign in" }}
+        </UiButton>
+        <UiButton
+          type="button"
+          variant="ghost"
+          class="w-full"
+          :disabled="loading || !email.trim()"
+          @click="handlePasskeyLogin"
+        >
+          Sign in with a passkey
+        </UiButton>
+        <div class="text-center">
+          <RouterLink to="/reset-password" class="text-xs text-muted-foreground hover:text-foreground">
+            Forgot password?
+          </RouterLink>
+        </div>
+      </form>
+
+      <form v-else-if="step === 'mfa'" class="space-y-4" @submit.prevent="handleVerify">
+        <div class="flex gap-2 text-xs">
+          <button
+            type="button"
+            class="rounded-md px-2 py-1"
+            :class="mfaMethod === 'totp' ? 'bg-muted font-medium' : 'text-muted-foreground'"
+            @click="mfaMethod = 'totp'"
+          >
+            Authenticator
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2 py-1"
+            :class="mfaMethod === 'recovery' ? 'bg-muted font-medium' : 'text-muted-foreground'"
+            @click="mfaMethod = 'recovery'"
+          >
+            Recovery code
+          </button>
+        </div>
+        <div class="space-y-1.5">
+          <label class="type-label">
+            {{ mfaMethod === "totp" ? "Authentication code" : "Recovery code" }}
+          </label>
+          <input
+            v-model="mfaCode"
+            class="field-input font-mono tracking-wider"
+            :placeholder="mfaMethod === 'totp' ? '123456' : 'ABCD-EFGH'"
+            autocomplete="one-time-code"
+            required
+          />
+        </div>
+        <div v-if="error" class="field-error">{{ error }}</div>
+        <UiButton type="submit" class="w-full" :disabled="loading">
+          {{ loading ? "Verifying…" : "Verify" }}
+        </UiButton>
+        <button type="button" class="w-full text-center text-xs text-muted-foreground" @click="backToPassword">
+          Back
+        </button>
+      </form>
+
+      <form v-else-if="step === 'enroll'" class="space-y-4" @submit.prevent="handleEnrollConfirm">
+        <p class="text-xs leading-relaxed text-muted-foreground">
+          MFA is required for this account. Scan the QR code with your authenticator app, then enter
+          the 6-digit code.
+        </p>
+        <div v-if="qrUrl" class="flex justify-center">
+          <img :src="qrUrl" alt="TOTP QR code" class="rounded-lg border border-border/50" />
+        </div>
+        <div class="space-y-1">
+          <p class="type-label">Manual secret</p>
+          <p class="break-all rounded-lg bg-muted px-3 py-2 font-mono text-[11px]">{{ enrollSecret }}</p>
+        </div>
+        <div class="space-y-1.5">
+          <label class="type-label">Authentication code</label>
+          <input
+            v-model="enrollCode"
+            class="field-input font-mono tracking-wider"
+            placeholder="123456"
+            autocomplete="one-time-code"
+            required
+          />
+        </div>
+        <div v-if="error" class="field-error">{{ error }}</div>
+        <UiButton type="submit" class="w-full" :disabled="loading">
+          {{ loading ? "Confirming…" : "Enable MFA" }}
+        </UiButton>
+      </form>
+
+      <div v-else class="space-y-4">
+        <p class="text-xs leading-relaxed text-muted-foreground">
+          Store these recovery codes in a safe place. Each code can be used once if you lose your
+          authenticator.
+        </p>
+        <pre
+          class="max-h-48 overflow-auto rounded-lg border border-border/50 bg-muted/40 p-3 font-mono text-xs leading-6"
+          >{{ recoveryText }}</pre
+        >
+        <UiButton type="button" variant="ghost" size="sm" class="w-full" @click="copyRecovery">
+          Copy codes
+        </UiButton>
+        <label class="flex items-start gap-2 text-xs">
+          <input v-model="recoveryAck" type="checkbox" class="mt-0.5 rounded" />
+          I have saved these recovery codes
+        </label>
+        <UiButton
+          type="button"
+          class="w-full"
+          :disabled="!recoveryAck"
+          @click="continueAfterRecovery"
+        >
+          Continue
+        </UiButton>
+      </div>
+    </div>
+  </div>
+</template>

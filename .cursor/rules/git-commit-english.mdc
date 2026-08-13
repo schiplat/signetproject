@@ -1,0 +1,26 @@
+---
+description: Always write git commit messages in English
+alwaysApply: true
+---
+
+# Git Commit Messages
+
+Write all git commit messages in English.
+
+## Format
+
+- Use imperative mood, present tense (e.g. "Add", "Fix", "Update", "Remove").
+- Keep the subject line concise (under ~72 characters).
+- Optionally add a blank line followed by a body explaining the "why".
+
+## Examples
+
+```text
+Add login trend chart to overview
+
+Fix MFA disable flow when policy is enforced
+
+Update docs to reflect x-request-id and consent changes
+```
+
+Do not use Chinese (or any other non-English language) in commit messages, commit bodies, or PR titles/descriptions.

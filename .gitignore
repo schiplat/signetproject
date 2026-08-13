@@ -1,0 +1,8 @@
+/target
+/data
+.env
+*.pem
+.pnpm-store/
+dashboard/node_modules
+dashboard/dist
+.DS_Store

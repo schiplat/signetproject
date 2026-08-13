@@ -1,0 +1,11 @@
+target/
+data/
+.git/
+.gitignore
+.env
+.env.example
+*.pem
+dashboard/node_modules/
+dashboard/dist/
+*.md
+.DS_Store

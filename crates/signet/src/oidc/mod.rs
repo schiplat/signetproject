@@ -1,0 +1,56 @@
+mod authorize;
+mod consent;
+mod discovery;
+mod end_session;
+mod jwks;
+mod register;
+mod revoke;
+mod token;
+mod userinfo;
+
+use crate::state::AppState;
+use crate::error::AppResult;
+use axum::routing::{get, post};
+use axum::Router;
+
+/// Returns true when `scope` (space-separated) contains `wanted`.
+pub(crate) fn scope_contains(scope: &str, wanted: &str) -> bool {
+    scope.split_whitespace().any(|s| s == wanted)
+}
+
+/// Returns true when every requested scope is present in `granted`.
+pub(crate) fn scope_covered(granted: &str, requested: &str) -> bool {
+    requested.split_whitespace().all(|r| scope_contains(granted, r))
+}
+
+/// Rejects any requested scope that is not in the client's registered `scopes`
+/// allow-list. `openid` is always present in both, so it always passes.
+pub(crate) fn validate_client_scope(requested: &str, allowed: &[String]) -> AppResult<()> {
+    for s in requested.split_whitespace() {
+        if !allowed.iter().any(|a| a == s) {
+            return Err(crate::error::AppError::bad_request(format!(
+                "scope not allowed for this client: {s}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/.well-known/openid-configuration",
+            get(discovery::openid_configuration),
+        )
+        .route("/oauth/jwks", get(jwks::jwks))
+        .route("/oauth/authorize", get(authorize::authorize).post(authorize::authorize))
+        .route("/oauth/token", post(token::token))
+        .route("/oauth/revoke", post(revoke::revoke))
+        .route("/oauth/register", post(register::register))
+        .route("/oauth/userinfo", get(userinfo::userinfo).post(userinfo::userinfo))
+        .route(
+            "/oauth/end_session",
+            get(end_session::end_session).post(end_session::end_session),
+        )
+        .route("/oauth/consent", post(consent::consent))
+}

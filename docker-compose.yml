@@ -1,0 +1,40 @@
+services:
+  # Production application. Connects to an existing PostgreSQL via
+  # SIGNET_DATABASE_URL (from .env) — no database is started here.
+  signet:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+    image: signet:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8443:8443"
+    volumes:
+      # Persists the JWT signing key and the encryption key. Do NOT lose this
+      # volume: rotating keys invalidates issued tokens and stored TOTP secrets.
+      - signet_data:/app/data
+
+  # Local development only. Production uses an existing PostgreSQL container,
+  # so this service is opt-in via `docker compose --profile dev up db`.
+  db:
+    image: postgres:16-alpine
+    profiles: ["dev"]
+    environment:
+      POSTGRES_USER: signet
+      POSTGRES_PASSWORD: signet
+      POSTGRES_DB: signet
+    ports:
+      - "5433:5432"
+    volumes:
+      - signet_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signet -d signet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  signet_data:
+  signet_pg:

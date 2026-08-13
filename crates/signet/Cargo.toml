@@ -1,0 +1,44 @@
+[package]
+name = "signet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Signet OIDC identity provider"
+
+[[bin]]
+name = "signet"
+path = "src/main.rs"
+
+[dependencies]
+aes-gcm.workspace = true
+anyhow.workspace = true
+argon2.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+base64.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true
+jsonwebtoken.workspace = true
+mime_guess.workspace = true
+password-hash.workspace = true
+rand.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rsa.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time = "0.3"
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+url.workspace = true
+urlencoding.workspace = true
+webauthn-rs = "0.5"
+totp-rs.workspace = true
+data-encoding.workspace = true
+ipnet.workspace = true

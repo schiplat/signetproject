@@ -32,11 +32,13 @@ const saving = ref(false);
 
 const formClientId = ref("");
 const formRedirects = ref("");
+const formPostLogoutRedirects = ref("");
 const formPkce = ref(true);
 const formIpAllowlist = ref(true);
 const formAllowedCidrs = ref("");
 
 const editRedirects = ref("");
+const editPostLogoutRedirects = ref("");
 const editPkce = ref(true);
 const editIpAllowlist = ref(true);
 const editAllowedCidrs = ref("");
@@ -103,6 +105,7 @@ function parseLines(raw: string) {
 function openCreate() {
   formClientId.value = "";
   formRedirects.value = "";
+  formPostLogoutRedirects.value = "";
   formPkce.value = true;
   formIpAllowlist.value = true;
   formAllowedCidrs.value = "";
@@ -112,6 +115,7 @@ function openCreate() {
 function openEdit(c: AdminClient) {
   editing.value = c;
   editRedirects.value = c.redirect_uris.join("\n");
+  editPostLogoutRedirects.value = (c.post_logout_redirect_uris || []).join("\n");
   editPkce.value = c.pkce_required;
   editIpAllowlist.value = c.ip_allowlist_enabled;
   editAllowedCidrs.value = (c.allowed_cidrs || []).join("\n");
@@ -122,10 +126,12 @@ async function onCreate() {
   creating.value = true;
   try {
     const redirect_uris = parseLines(formRedirects.value);
+    const post_logout_redirect_uris = parseLines(formPostLogoutRedirects.value);
     const allowed_cidrs = parseLines(formAllowedCidrs.value);
     const res = await createClient({
       client_id: formClientId.value,
       redirect_uris,
+      post_logout_redirect_uris,
       pkce_required: formPkce.value,
       ip_allowlist_enabled: formIpAllowlist.value,
       allowed_cidrs,
@@ -151,6 +157,7 @@ async function onSaveEdit() {
   try {
     await updateClient(editing.value.id, {
       redirect_uris: parseLines(editRedirects.value),
+      post_logout_redirect_uris: parseLines(editPostLogoutRedirects.value),
       pkce_required: editPkce.value,
       ip_allowlist_enabled: editIpAllowlist.value,
       allowed_cidrs: parseLines(editAllowedCidrs.value),
@@ -425,6 +432,18 @@ function copyBoth() {
               />
               <p class="type-meta mt-1">One URI per line</p>
             </div>
+            <div>
+              <label class="mb-1 block text-[12px] font-medium">
+                Post-logout Redirect URIs
+              </label>
+              <textarea
+                v-model="formPostLogoutRedirects"
+                rows="2"
+                placeholder="http://localhost:3000/"
+                class="field-input min-h-[3.5rem] resize-y py-2 font-mono text-xs"
+              />
+              <p class="type-meta mt-1">One URI per line (RP-initiated logout)</p>
+            </div>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="formPkce" type="checkbox" class="rounded" />
               Require PKCE (S256)
@@ -477,6 +496,18 @@ function copyBoth() {
                 rows="3"
                 class="field-input min-h-[5.5rem] resize-y py-2 font-mono text-xs"
               />
+            </div>
+            <div>
+              <label class="mb-1 block text-[12px] font-medium">
+                Post-logout Redirect URIs
+              </label>
+              <textarea
+                v-model="editPostLogoutRedirects"
+                rows="2"
+                placeholder="http://localhost:3000/"
+                class="field-input min-h-[3.5rem] resize-y py-2 font-mono text-xs"
+              />
+              <p class="type-meta mt-1">One URI per line (RP-initiated logout)</p>
             </div>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="editPkce" type="checkbox" class="rounded" />

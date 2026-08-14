@@ -167,7 +167,7 @@ function formatShortTime(iso: string) {
               Recent logins
             </p>
             <RouterLink
-              to="/admin/audit-logs"
+              to="/audit-logs"
               class="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               View all →
@@ -195,7 +195,7 @@ function formatShortTime(iso: string) {
           </ul>
           <div class="shrink-0 border-t border-border/30 px-5 py-2.5 text-center">
             <RouterLink
-              to="/admin/audit-logs"
+              to="/audit-logs"
               class="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               Open audit logs

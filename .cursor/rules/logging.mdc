@@ -1,0 +1,61 @@
+---
+description: Structured logging standards (tracing) for all project code
+alwaysApply: true
+---
+
+# Logging Standards
+
+All logging goes through the `tracing` crate (`tracing::info!` / `warn!` / `error!` / `debug!` / `trace!`). Follow these rules in every log statement.
+
+## Core rules
+
+1. **Structured, never interpolated.** Do not build dynamic values into the message string. Pass them as key-value fields so aggregators can index and filter them.
+
+```rust
+// ❌ BAD — value in message
+tracing::info!("Processed payment for user {} in {}ms", user_id, ms);
+
+// ✅ GOOD — static message + structured fields
+tracing::info!(user_id, elapsed_ms = ms, "processed payment");
+```
+
+2. **Static messages.** The message is a fixed description of the event, lowercase and concise, no trailing punctuation. It must be identical across occurrences of the same event (enables grouping).
+
+3. **Errors are a field.** Log errors via a dedicated `error` field using the error's `Display` (`%err`) or `Debug` (`?err`) impl — never in the message.
+
+```rust
+tracing::error!(error = %err, user_id, "failed to fetch user");
+```
+
+## Levels
+
+| Level | Use for |
+|-------|---------|
+| `ERROR` | Fatal/unrecoverable failures needing intervention |
+| `WARN`  | Non-fatal problems, retries, resource near limits |
+| `INFO`  | Lifecycle (start/stop), key business flow steps |
+| `DEBUG` | Detailed execution path, verbose internals |
+| `TRACE` | Very high-frequency events (per-packet, per-iteration) |
+
+## Format
+
+- **Development (default):** readable compact text, one line per event, with timestamp + level + target + file:line.
+- **Production (`APP_ENV=production`):** single-line flat JSON for log aggregation (`timestamp`, `level`, `target`, `message`, flattened fields).
+
+## Sensitive data (PII)
+
+Never log plaintext passwords, secrets, bearer/refresh/reset tokens, full phone numbers, or ID-card numbers. Mask them if a value is required for debugging.
+
+## Performance
+
+Avoid expensive computation inside log arguments. For costly debug values, guard with:
+
+```rust
+if tracing::enabled!(tracing::Level::DEBUG) {
+    tracing::debug!(data = expensive(), "computed debug data");
+}
+```
+
+## Default level
+
+`RUST_LOG` overrides the default, which is `info` (with `signet` at `debug` in development).

@@ -52,42 +52,6 @@ pub async fn ensure_admin(pool: &PgPool, cfg: &Config) -> Result<()> {
     Ok(())
 }
 
-pub async fn ensure_cella_client(pool: &PgPool, cfg: &Config) -> Result<()> {
-    let secret_hash = hash_password(&cfg.cella_client_secret)?;
-    let id = Uuid::new_v4();
-
-    sqlx::query(
-        r#"
-        INSERT INTO client_apps (
-            id, client_id, client_secret_hash, redirect_uris, grant_types, pkce_required, scopes,
-            enabled, ip_allowlist_enabled, allowed_cidrs
-        )
-        VALUES (
-            $1, 'cella', $2, $3,
-            ARRAY['authorization_code', 'refresh_token'],
-            TRUE,
-            ARRAY['openid', 'profile', 'email'],
-            TRUE,
-            FALSE,
-            '{}'
-        )
-        ON CONFLICT (client_id) DO UPDATE SET
-            client_secret_hash = EXCLUDED.client_secret_hash,
-            redirect_uris = EXCLUDED.redirect_uris,
-            enabled = TRUE,
-            updated_at = NOW()
-        "#,
-    )
-    .bind(id)
-    .bind(secret_hash)
-    .bind(&cfg.cella_redirect_uris)
-    .execute(pool)
-    .await?;
-
-    tracing::info!("cella client upserted");
-    Ok(())
-}
-
 /// Seed the SCIM bearer token from `SIGNET_SCIM_BEARER_TOKEN` on first boot only.
 /// Once a token exists (whether seeded or generated from the dashboard), the env
 /// var is ignored so that UI-based rotation becomes the source of truth.

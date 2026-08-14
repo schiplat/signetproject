@@ -37,7 +37,7 @@ const allEntries: NavEntry[] = [
     name: "overview",
     label: "Overview",
     icon: LayoutDashboard,
-    to: "/admin/overview",
+    to: "/overview",
     staffOnly: true,
   },
   { kind: "section", label: "Access", staffOnly: true },
@@ -46,7 +46,7 @@ const allEntries: NavEntry[] = [
     name: "users",
     label: "Users",
     icon: UserRound,
-    to: "/admin/users",
+    to: "/users",
     staffOnly: true,
   },
   { kind: "section", label: "Applications", staffOnly: true },
@@ -55,7 +55,7 @@ const allEntries: NavEntry[] = [
     name: "clients",
     label: "Clients",
     icon: AppWindow,
-    to: "/admin/clients",
+    to: "/clients",
     staffOnly: true,
   },
   { kind: "section", label: "Observability", staffOnly: true },
@@ -64,7 +64,7 @@ const allEntries: NavEntry[] = [
     name: "audit-logs",
     label: "Audit logs",
     icon: ScrollText,
-    to: "/admin/audit-logs",
+    to: "/audit-logs",
     staffOnly: true,
   },
   { kind: "section", label: "System" },
@@ -80,7 +80,7 @@ const allEntries: NavEntry[] = [
     name: "settings",
     label: "Settings",
     icon: Settings,
-    to: "/admin/settings",
+    to: "/settings",
     adminOnly: true,
   },
   {
@@ -88,7 +88,7 @@ const allEntries: NavEntry[] = [
     name: "integrations",
     label: "Integrations",
     icon: Plug,
-    to: "/admin/integrations",
+    to: "/integrations",
     adminOnly: true,
   },
 ];
@@ -116,7 +116,7 @@ function onNavClick(e: MouseEvent, to: string) {
 function onLogoClick(e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
   e.preventDefault();
-  void router.push(auth.isStaff ? "/admin/overview" : "/activity");
+  void router.push(auth.isStaff ? "/overview" : "/activity");
 }
 </script>
 

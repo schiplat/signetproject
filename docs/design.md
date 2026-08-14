@@ -110,7 +110,7 @@ GET https://signet.ddl.sconts.com/.well-known/openid-configuration
 | `/oauth/logout` 或 OIDC `end_session_endpoint` | GET/POST | 统一登出（二期可完善） |
 | `/health` | GET | 探活，公开 |
 
-登录页与管理台同域托管（`/`、`/admin/*`）。Dashboard JSON API 统一 **`/api/v1/*`**（见 [api-v1.md](./api-v1.md)）。
+登录页与管理台同域托管（`/login`、`/activity`、`/overview`、`/users`、`/clients`、`/audit-logs`、`/settings`、`/integrations`）。Dashboard JSON API 统一 **`/api/v1/*`**（见 [api-v1.md](./api-v1.md)）。
 
 ### 3.4 Token 类型
 
@@ -249,14 +249,14 @@ Signet **不是**对外账户体系：无公开自助注册。
 
 **完整对接步骤、请求字段、token claims、排错**：见 [client-integration.md](./client-integration.md)。
 
-### 6.1 Cella 作为 OIDC 客户端（摘要）
+### 6.1 业务客户端 OIDC 配置（摘要）
 
 | 配置项（示例名） | 值 |
 |------------------|-----|
 | `OIDC_ISSUER` | 开发 `http://localhost:8443`；生产 `https://signet.ddl.sconts.com` |
-| `OIDC_CLIENT_ID` | `cella` |
-| `OIDC_CLIENT_SECRET` | 部署机密（开发见 `SIGNET_CELLA_CLIENT_SECRET`） |
-| `OIDC_REDIRECT_URI` | 精确白名单，如 `https://<cella-host>/auth/callback` |
+| `OIDC_CLIENT_ID` | 在 Signet 后台 / 动态注册中登记的 `client_id` |
+| `OIDC_CLIENT_SECRET` | 创建客户端时一次性下发的 secret |
+| `OIDC_REDIRECT_URI` | 精确白名单，如 `https://<app-host>/auth/callback` |
 | `OIDC_SCOPES` | `openid profile email` |
 
 ### 6.2 客户端责任
@@ -324,13 +324,13 @@ Signet **不是**对外账户体系：无公开自助注册。
 - 本设计定稿  
 - 仓库 `signetproject`、域名证书、基础部署清单  
 
-### Phase 1 — 最小可用 IdP（给 Cella 用）
+### Phase 1 — 最小可用 IdP（给业务系统用）
 
 - User + ClientApp CRUD（可先配置文件 / 简单管理）  
 - authorize / token / jwks / userinfo  
 - 登录页 + PKCE  
 - Discovery 文档  
-- 注册客户端 `cella`  
+- 注册客户端  
 
 ### Phase 2 — 会话与运维
 
@@ -407,8 +407,8 @@ SIGNET_JWT_PRIVATE_KEY=   # 或 KMS 引用
 
 ## 12. 开放问题
 
-1. Cella 的正式内网域名与 `redirect_uri` 最终值（开发可用 `SIGNET_CELLA_REDIRECT_URIS`）  
-2. Cookie 会话还是业务侧 JWT 会话（Cella 自行决定，Signet 只发 OIDC token）  
+1. 各业务系统的正式域名与 `redirect_uri` 最终值（在 Signet 后台 / 动态注册中登记）  
+2. Cookie 会话还是业务侧 JWT 会话（各业务自行决定，Signet 只发 OIDC token）  
 3. 生产环境是否单独 issuer / 密钥 / 库（与开发隔离）  
 
 已确认：用户来源为首期本地账号 + 管理员开户；机密客户端 + PKCE；开发不使用生产域名。

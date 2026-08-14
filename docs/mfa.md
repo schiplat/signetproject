@@ -6,7 +6,7 @@
 | 恢复 | 10 个一次性恢复码（argon2 存储） |
 | TOTP 密钥 | `totp_secret` 以 AES-256-GCM 应用层加密后落库（明文不再存库） |
 | 强制策略 | 全局开关 + 用户级开关（均可关） |
-| Settings UI | `/admin/settings`，**仅 admin** |
+| Settings UI | `/settings`，**仅 admin** |
 | API 前缀 | `/api/v1/...`（见 [api-v1.md](./api-v1.md)） |
 | UI 说明 | [dashboard.md](./dashboard.md) |
 

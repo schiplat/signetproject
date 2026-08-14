@@ -39,10 +39,11 @@ export const router = createRouter({
       children: [
         {
           path: "",
-          redirect: () => {
-            const auth = useAuthStore();
-            return auth.isStaff ? "/admin/overview" : "/activity";
-          },
+          // Static redirect: staff land on the overview, non-staff are bounced
+          // to /activity by the beforeEach guard (which runs after fetchMe
+          // loads the authenticated user). A redirect function here would run
+          // before auth is loaded and always see isStaff === false.
+          redirect: "/overview",
         },
         {
           path: "activity",
@@ -51,37 +52,37 @@ export const router = createRouter({
           meta: { title: "Activity" },
         },
         {
-          path: "admin/overview",
+          path: "overview",
           name: "overview",
           component: OverviewView,
           meta: { title: "Overview", staff: true },
         },
         {
-          path: "admin/users",
+          path: "users",
           name: "users",
           component: UsersView,
           meta: { title: "Users", staff: true },
         },
         {
-          path: "admin/clients",
+          path: "clients",
           name: "clients",
           component: ClientsView,
           meta: { title: "Clients", staff: true },
         },
         {
-          path: "admin/audit-logs",
+          path: "audit-logs",
           name: "audit-logs",
           component: AuditLogsView,
           meta: { title: "Audit logs", staff: true },
         },
         {
-          path: "admin/settings",
+          path: "settings",
           name: "settings",
           component: SettingsView,
           meta: { title: "Settings", admin: true },
         },
         {
-          path: "admin/integrations",
+          path: "integrations",
           name: "integrations",
           component: IntegrationsView,
           meta: { title: "Integrations", admin: true },
@@ -101,10 +102,15 @@ router.beforeEach(async (to) => {
     return { path: "/login", query: { return_to: to.fullPath } };
   }
   if (to.meta.admin && !auth.isAdmin) {
-    return { path: auth.isStaff ? "/admin/overview" : "/activity" };
+    return { path: auth.isStaff ? "/overview" : "/activity" };
   }
   if (to.meta.staff && !auth.isStaff) {
     return { path: "/activity" };
   }
   return true;
+});
+
+router.afterEach((to) => {
+  const pageTitle = typeof to.meta.title === "string" ? to.meta.title : "";
+  document.title = pageTitle ? `${pageTitle} · Signet` : "Signet · Identity";
 });

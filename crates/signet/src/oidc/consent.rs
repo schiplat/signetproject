@@ -4,7 +4,7 @@ use crate::models::ClientApp;
 use crate::state::AppState;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -52,8 +52,8 @@ pub async fn consent(
         return Err(AppError::bad_request("redirect_uri not allowed"));
     }
 
-    let scope = body.scope.as_deref().unwrap_or("openid");
-    crate::oidc::validate_client_scope(scope, &client.scopes)?;
+    let scope = crate::oidc::normalize_scope(body.scope.as_deref().unwrap_or("openid"));
+    crate::oidc::validate_client_scope(&scope, &client.scopes)?;
 
     if !body.allow {
         let mut url = url::Url::parse(&body.redirect_uri)
@@ -62,7 +62,10 @@ pub async fn consent(
         if let Some(s) = &body.state {
             url.query_pairs_mut().append_pair("state", s);
         }
-        return Ok(Redirect::to(url.as_str()).into_response());
+        // Returned as JSON like the allow branch: the consent page uses fetch,
+        // which cannot read a 303's Location header. `body.redirect_uri` was
+        // already validated against the client allow-list above.
+        return Ok(Json(serde_json::json!({ "redirect": url.as_str() })).into_response());
     }
 
     // Requested scopes are mandatory: on `allow` they are granted in full.
@@ -100,8 +103,10 @@ pub async fn consent(
 
     // Return to authorize with the REQUESTED scope only — optional grants are
     // persisted for future requests but do not widen this token exchange.
-    let return_to = format!("/oauth/authorize?{}", consent_return_query(&body, scope));
-    Ok(Redirect::to(return_to.as_str()).into_response())
+    // The redirect target is returned as JSON (not a 303): the dashboard consent
+    // page uses fetch, which cannot read a redirect's Location header.
+    let return_to = format!("/oauth/authorize?{}", consent_return_query(&body, &scope));
+    Ok(Json(serde_json::json!({ "redirect": return_to })).into_response())
 }
 
 fn consent_return_query(b: &ConsentBody, scope: &str) -> String {

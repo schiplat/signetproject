@@ -4,7 +4,7 @@
 
 - **生产入口（未来）**：`https://signet.ddl.sconts.com`
 - **开发默认 Issuer**：`http://localhost:8443`（`SIGNET_ISSUER` 可配）
-- **首个接入方**：Cella（内网子系统）
+- **首个接入方**：Cella（内网子系统）；客户端统一走通用申请渠道（Dashboard → Clients 或 RFC 7591 动态注册），无内置预置
 
 > 命名说明：本项目为 SSO，**不是**阿里云 Object Storage（OSS）。
 
@@ -59,12 +59,19 @@ cd .. && cargo build -p signet
 
 ### 4. 账号模型
 
-- **无公开注册**；staff 在 `/admin/users` 开户  
+- **无公开注册**；staff 在 **Dashboard → Users**（前端路由 `/users`，API `/api/v1/admin/users`）开户  
 - 角色：`admin` / `manager` / `member`（见设计文档）  
 - 冷启动 bootstrap 创建首位 `admin`  
 - 可选 **MFA**（全局或按用户强制）；账户菜单可自愿绑定  
 
 默认 bootstrap（见 `.env.example`）：`admin@example.com` / `changeme-admin`
+
+### 5. 可观测性
+
+- 所有请求响应带 **`x-request-id`**（透传 / 自动生成 UUIDv4），用于链路关联
+- 访问日志由 `crates/signet/src/access_log.rs` 统一输出：单行、结构化字段（`request_id` / `method` / `path` / `query` / `ip` / `status` / `latency_ms`），`2xx/3xx` 为 `INFO`，`4xx` 为 `WARN`，`5xx` 为 `ERROR`
+- 日志走 `tracing`，规范见 [.cursor/rules/logging.mdc](./.cursor/rules/logging.mdc)：静态消息 + 结构化字段，错误用 `error` 字段，生产（`APP_ENV=production`）输出单行 JSON
+- `GET /metrics` 暴露 Prometheus 指标
 
 ## 主要端点
 

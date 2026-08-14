@@ -56,18 +56,9 @@ Discovery 返回（节选）：
 
 > 换票通常来自业务后端，白名单应包含 BFF / 业务服务器出口 IP。Authorize 经浏览器时，源 IP 为用户侧；若仅希望限制服务端换票，仍需把用户网段一并列入，或临时关闭该客户端的 IP 限制。
 
-开发预置 `cella` 默认 **不开启** IP 限制，避免本地联调中断。
+### 2.2 动态客户端注册（RFC 7591）
 
-### 2.2 开发预置：Cella
-
-进程启动会 upsert `client_id=cella`：
-
-| 变量 | 默认（开发） |
-|------|----------------|
-| `SIGNET_CELLA_CLIENT_SECRET` | `cella-dev-secret` |
-| `SIGNET_CELLA_REDIRECT_URIS` | `http://localhost:3000/auth/callback`（逗号分隔多 URI） |
-
-生产务必更换 secret，并登记真实回调地址。
+除管理后台外，业务系统也可通过**一次性初始访问 token** 自助登记客户端，见 [integrations.md](./integrations.md) §1。
 
 ### 2.3 推荐客户端形态
 
@@ -255,22 +246,67 @@ Authorization: Bearer {access_token}
 
 ## 8. 登出
 
-1. 清除**业务本地会话**即可满足多数场景  
-2. 需要统一登出时，走 **RP-Initiated Logout**：
+### 8.1 两种登出
+
+1. **仅清除业务本地会话**即可满足多数场景；Signet 会话仍在，下次登录可免重新认证（SSO 单点）。
+2. 需要**全局统一登出**时，走 **RP-Initiated Logout**（OIDC RP-Initiated Logout 1.0）：
 
 ```http
 GET {issuer}/oauth/end_session?client_id=cella&post_logout_redirect_uri={uri}&state=...
 ```
 
-- Signet 清除 `signet_session` 会话  
-- 仅当 `post_logout_redirect_uri` 登记在该客户端的 `post_logout_redirect_uris` 白名单内才回跳，可带 `state`  
+- Signet 清除 `signet_session` 会话
+- 仅当 `post_logout_redirect_uri` 登记在该客户端的 `post_logout_redirect_uris` 白名单内才回跳，可带 `state`
 - 用户也可在 Signet 账户菜单「Active sessions」自行撤销单设备会话
+
+### 8.2 完整链路
+
+```text
+用户点「登出」
+  → 业务后端清除本地会话
+  → 浏览器跳转 Signet /oauth/end_session?client_id=...&post_logout_redirect_uri=...
+  → Signet 清除 SSO 会话
+  → Signet 校验 post_logout_redirect_uri 是否在白名单内
+      ├─ 命中 → 302 回跳该地址（可带 state）
+      └─ 未命中 → 302 到 Signet 首页（/）
+```
+
+### 8.3 两个配置，缺一不可
+
+RP-Initiated Logout 里 `post_logout_redirect_uri` 是**客户端主动发起**的参数，IdP 只负责**校验**，两者职责不同，不能互相替代：
+
+| 位置 | 配置项 | 角色 | 语义 |
+|------|--------|------|------|
+| Signet（IdP） | 客户端 `post_logout_redirect_uris` 白名单 | **校验方**（被动） | 「允许登出后回跳到哪些地址」 |
+| 业务系统（RP） | `OIDC_POST_LOGOUT_REDIRECT_URI` | **发起方**（主动） | 「我登出后想回哪里」 |
+
+- **发起方必须传**：客户端不传 `post_logout_redirect_uri`，Signet 就没有可校验的地址，只能 fallback 到 `/`。
+- **校验方必须登记**：Signet 只回跳白名单内的地址。未登记（空数组/NULL）或**与发起值不完全一致**（含尾斜杠、http/https、端口、路径）都会回退到 Signet 首页。
+- **两边必须逐字符一致**：例如业务侧配 `http://localhost:8080/signed-out`，Signet 白名单也必须是同一个字符串。
+
+### 8.4 Signet 端不配（或值不一致）的后果
+
+Signet 对回跳是 **fail-closed**：
+
+```text
+end_session?post_logout_redirect_uri={未登记/不一致的值}
+  → 校验失败 → 302 到 Signet 首页 /
+  → 首页路由守卫发现未登录 → 302 /login?return_to=...
+  → 用户看到的是 Signet 登录页
+```
+
+即：**不会产生开放重定向漏洞**（安全性更严格），但登出后无法回到业务系统，表现为「登出后又弹回 IdP 登录页」。
+
+### 8.5 客户端需提供 public 落地页
+
+业务系统若**所有路由都要求登录**，登出回跳后会被自身路由守卫再次踢回 Signet 登录页（循环体验）。建议提供一个 public 的「已退出登录」落地页（如 `/signed-out`），并把它设为 `OIDC_POST_LOGOUT_REDIRECT_URI`，让登出有一个明确的终点。
 
 ---
 
 ## 9. 业务侧清单
 
 - [ ] 配置 `OIDC_ISSUER` / `CLIENT_ID` / `CLIENT_SECRET` / `REDIRECT_URI` / `SCOPES`
+- [ ] 需要统一登出时：配置 `OIDC_POST_LOGOUT_REDIRECT_URI`（业务侧），并在 Signet 客户端白名单登记**同一值**
 - [ ] 生成 PKCE `code_verifier` / `code_challenge`（S256）与 `state` / `nonce`
 - [ ] 未登录跳转 authorize；回调校验 `state`
 - [ ] 后端换票；校验 `id_token`
@@ -278,15 +314,16 @@ GET {issuer}/oauth/end_session?client_id=cella&post_logout_redirect_uri={uri}&st
 - [ ] API 鉴权看业务会话；公开 `/health`
 - [ ] 生产 HTTPS；时钟同步；secret 不进前端仓库
 
-### Cella 示例配置名
+### 客户端示例配置名
 
 | 配置项 | 开发示例 |
 |--------|----------|
 | `OIDC_ISSUER` | `http://localhost:8443` |
-| `OIDC_CLIENT_ID` | `cella` |
-| `OIDC_CLIENT_SECRET` | `cella-dev-secret`（或 env 覆盖） |
-| `OIDC_REDIRECT_URI` | `http://localhost:3000/auth/callback` |
+| `OIDC_CLIENT_ID` | 在 Signet 后台 / 动态注册中登记的 `client_id` |
+| `OIDC_CLIENT_SECRET` | 创建客户端时一次性下发的 secret |
+| `OIDC_REDIRECT_URI` | 在 Signet 登记的精确回调地址 |
 | `OIDC_SCOPES` | `openid profile email` |
+| `OIDC_POST_LOGOUT_REDIRECT_URI` | 统一登出回跳地址（可选；须在 Signet 客户端白名单登记同一值） |
 
 ---
 

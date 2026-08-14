@@ -18,6 +18,20 @@ pub(crate) fn scope_contains(scope: &str, wanted: &str) -> bool {
     scope.split_whitespace().any(|s| s == wanted)
 }
 
+/// De-duplicates a space-separated scope list, preserving first-seen order.
+/// OIDC scopes form a set, so duplicates (e.g. a client that sends
+/// `openid openid profile`) carry no extra meaning and only cause repeated
+/// entries on the consent page and in stored grants.
+pub(crate) fn normalize_scope(scope: &str) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    for s in scope.split_whitespace() {
+        if !seen.iter().any(|x| *x == s) {
+            seen.push(s);
+        }
+    }
+    seen.join(" ")
+}
+
 /// Returns true when every requested scope is present in `granted`.
 pub(crate) fn scope_covered(granted: &str, requested: &str) -> bool {
     requested.split_whitespace().all(|r| scope_contains(granted, r))

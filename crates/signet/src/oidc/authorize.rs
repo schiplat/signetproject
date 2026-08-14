@@ -50,7 +50,7 @@ pub async fn authorize(
         .redirect_uri
         .as_deref()
         .ok_or_else(|| AppError::bad_request("missing redirect_uri"))?;
-    let scope = q.scope.as_deref().unwrap_or("openid");
+    let scope = crate::oidc::normalize_scope(q.scope.as_deref().unwrap_or("openid"));
     if !scope.split_whitespace().any(|s| s == "openid") {
         return Err(AppError::bad_request("scope must include openid"));
     }
@@ -104,7 +104,7 @@ pub async fn authorize(
     if !client.redirect_uris.iter().any(|u| u == redirect_uri) {
         return Err(AppError::bad_request("redirect_uri not allowed"));
     }
-    crate::oidc::validate_client_scope(scope, &client.scopes)?;
+    crate::oidc::validate_client_scope(&scope, &client.scopes)?;
     let source = client_ip(&headers, Some(addr));
     check_client_source_ip(
         client.ip_allowlist_enabled,
@@ -133,12 +133,12 @@ pub async fn authorize(
     .await?;
     let fully_consented = granted
         .as_deref()
-        .map_or(false, |g| crate::oidc::scope_covered(g, scope));
+        .map_or(false, |g| crate::oidc::scope_covered(g, &scope));
     if !fully_consented || has_prompt("consent") {
         if has_prompt("none") {
             return Err(AppError::bad_request("consent_required"));
         }
-        return Ok(redirect_to_consent(&q, &client.scopes));
+        return Ok(redirect_to_consent(&q, &client.scopes, &scope));
     }
 
     let code = random_token(32);
@@ -159,7 +159,7 @@ pub async fn authorize(
     .bind(client_id)
     .bind(user.id)
     .bind(redirect_uri)
-    .bind(scope)
+    .bind(&scope)
     .bind(code_challenge)
     .bind(&q.nonce)
     .bind(expires_at)
@@ -175,21 +175,27 @@ pub async fn authorize(
 }
 
 fn redirect_to_login(q: &AuthorizeQuery, prompt: Option<&str>) -> Response {
-    let return_to = format!("/oauth/authorize?{}", authorize_query_string(q, prompt));
+    let scope = crate::oidc::normalize_scope(q.scope.as_deref().unwrap_or("openid"));
+    let return_to = format!(
+        "/oauth/authorize?{}",
+        authorize_query_string(q, prompt, &scope)
+    );
     let loc = format!("/login?return_to={}", urlencoding::encode(&return_to));
     (StatusCode::SEE_OTHER, [(axum::http::header::LOCATION, loc)]).into_response()
 }
 
-fn redirect_to_consent(q: &AuthorizeQuery, allowed: &[String]) -> Response {
-    let requested = q.scope.as_deref().unwrap_or("openid");
+fn redirect_to_consent(q: &AuthorizeQuery, allowed: &[String], scope: &str) -> Response {
     // Optional scopes are those the client is allowed to have but did not
     // request this time — surfaced as opt-in checkboxes (GitHub-style).
     let optional: Vec<&str> = allowed
         .iter()
         .map(String::as_str)
-        .filter(|s| !crate::oidc::scope_contains(requested, s))
+        .filter(|s| !crate::oidc::scope_contains(scope, s))
         .collect();
-    let mut loc = format!("/consent?{}", authorize_query_string(q, q.prompt.as_deref()));
+    let mut loc = format!(
+        "/consent?{}",
+        authorize_query_string(q, q.prompt.as_deref(), scope)
+    );
     if !optional.is_empty() {
         loc.push_str("&optional_scopes=");
         loc.push_str(&urlencoding::encode(&optional.join(" ")));
@@ -209,7 +215,7 @@ fn prompt_without(prompt: &str, removed: &str) -> Option<String> {
     }
 }
 
-fn authorize_query_string(q: &AuthorizeQuery, prompt: Option<&str>) -> String {
+fn authorize_query_string(q: &AuthorizeQuery, prompt: Option<&str>, scope: &str) -> String {
     let mut parts = Vec::new();
     if let Some(v) = &q.response_type {
         parts.push(format!("response_type={}", urlencoding::encode(v)));
@@ -220,9 +226,7 @@ fn authorize_query_string(q: &AuthorizeQuery, prompt: Option<&str>) -> String {
     if let Some(v) = &q.redirect_uri {
         parts.push(format!("redirect_uri={}", urlencoding::encode(v)));
     }
-    if let Some(v) = &q.scope {
-        parts.push(format!("scope={}", urlencoding::encode(v)));
-    }
+    parts.push(format!("scope={}", urlencoding::encode(scope)));
     if let Some(v) = &q.state {
         parts.push(format!("state={}", urlencoding::encode(v)));
     }

@@ -54,7 +54,7 @@ async function finishWithUser(user: PublicUser) {
     return;
   }
   const fallback =
-    user.role === "admin" || user.role === "manager" ? "/admin/overview" : "/activity";
+    user.role === "admin" || user.role === "manager" ? "/overview" : "/activity";
   await router.replace(raw && !raw.startsWith("/login") ? raw : fallback);
 }
 

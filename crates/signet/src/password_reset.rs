@@ -75,7 +75,7 @@ async fn request_reset(
 
         // Dev/test convenience: without a real mailer, surface the link once.
         if state.config.smtp_host.is_none() {
-            tracing::info!(email = %user.1, "password reset link (dev): {link}");
+            tracing::info!(email = %user.1, link = %link, "password reset link (dev)");
         }
     } else {
         // Still pretend we sent something.

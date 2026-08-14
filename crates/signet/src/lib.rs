@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod access_log;
 pub mod audit;
 pub mod auth;
 pub mod bootstrap;
@@ -34,13 +35,11 @@ use anyhow::Context;
 use axum::routing::get;
 use axum::Router;
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
 
 pub async fn build_app(cfg: Config) -> anyhow::Result<Router> {
     let pool = db::connect(&cfg.database_url).await?;
     db::migrate(&pool).await?;
     bootstrap::ensure_admin(&pool, &cfg).await?;
-    bootstrap::ensure_cella_client(&pool, &cfg).await?;
     bootstrap::ensure_scim_token(&pool, &cfg).await?;
 
     if let Err(e) = audit::prune_audit_logs(&pool, cfg.audit_retention_days).await {
@@ -89,16 +88,7 @@ pub async fn build_app(cfg: Config) -> anyhow::Result<Router> {
             ratelimit::track,
         ))
         .layer(axum::middleware::from_fn(metrics::track))
-        .layer(
-            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<axum::body::Body>| {
-                let request_id = req
-                    .extensions()
-                    .get::<request_id::RequestId>()
-                    .map(|r| r.0.as_str())
-                    .unwrap_or("-");
-                tracing::info_span!("http", request_id)
-            }),
-        )
+        .layer(axum::middleware::from_fn(access_log::track))
         .layer(axum::middleware::from_fn(request_id::track))
         .with_state(state);
 

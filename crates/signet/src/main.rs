@@ -1,15 +1,62 @@
 use signet::build_app;
 use signet::config::Config;
+use std::fmt;
 use std::net::SocketAddr;
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+
+/// Local-time timestamp rendered as `YYYY-MM-DD HH:MM:SS.mmm`.
+struct LocalTime;
+
+impl FormatTime for LocalTime {
+    fn format_time(&self, w: &mut Writer<'_>) -> fmt::Result {
+        write!(w, "{}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3fZ"))
+    }
+}
+
+fn init_logger() {
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,signet=debug"));
+
+    let is_production =
+        std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false);
+
+    if is_production {
+        // Production: flat single-line JSON for log aggregation.
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .flatten_event(true)
+                    .with_current_span(true)
+                    .with_ansi(false)
+                    .with_target(true),
+            )
+            .init();
+    } else {
+        // Development: readable compact text with source location.
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stdout)
+                    .with_timer(LocalTime)
+                    .with_ansi(true)
+                    .with_level(true)
+                    .with_target(true)
+                    .with_line_number(true)
+                    .compact(),
+            )
+            .init();
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,signet=debug")),
-        )
-        .init();
+    init_logger();
 
     let cfg = Config::from_env()?;
     let bind = cfg.http_bind;

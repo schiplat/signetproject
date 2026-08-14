@@ -112,7 +112,7 @@ OIDC 协议端点仍为 `/oauth/*` 与 `/.well-known/openid-configuration`（见
 | `ip_allowlist_enabled` | `true` | 开启后仅 `allowed_cidrs` 可访问该客户端的 authorize/token |
 | `allowed_cidrs` | `[]` | IP 或 CIDR；开启时**至少一条** |
 
-已有客户端迁移后默认为 **关闭**限制；开发预置 `cella` 亦关闭。详见 [client-integration.md](./client-integration.md)。
+已有客户端迁移后默认为 **关闭**限制。详见 [client-integration.md](./client-integration.md)。
 
 ---
 

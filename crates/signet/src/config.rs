@@ -11,8 +11,6 @@ pub struct Config {
     pub cookie_secure: bool,
     pub bootstrap_admin_email: Option<String>,
     pub bootstrap_admin_password: Option<String>,
-    pub cella_client_secret: String,
-    pub cella_redirect_uris: Vec<String>,
     pub jwt_private_key_path: PathBuf,
     pub encryption_key_path: PathBuf,
     pub session_ttl_hours: i64,
@@ -59,18 +57,6 @@ impl Config {
         let bootstrap_admin_email = env::var("SIGNET_BOOTSTRAP_ADMIN_EMAIL").ok();
         let bootstrap_admin_password = env::var("SIGNET_BOOTSTRAP_ADMIN_PASSWORD").ok();
 
-        let cella_client_secret = env::var("SIGNET_CELLA_CLIENT_SECRET")
-            .unwrap_or_else(|_| "cella-dev-secret".into());
-        let cella_redirect_uris = env::var("SIGNET_CELLA_REDIRECT_URIS")
-            .unwrap_or_else(|_| "http://localhost:3000/auth/callback".into())
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>();
-        if cella_redirect_uris.is_empty() {
-            bail!("SIGNET_CELLA_REDIRECT_URIS must contain at least one URI");
-        }
-
         let jwt_private_key_path = env::var("SIGNET_JWT_PRIVATE_KEY_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("./data/jwt_private.pem"));
@@ -85,8 +71,6 @@ impl Config {
             cookie_secure,
             bootstrap_admin_email,
             bootstrap_admin_password,
-            cella_client_secret,
-            cella_redirect_uris,
             jwt_private_key_path,
             encryption_key_path,
             session_ttl_hours: 12,

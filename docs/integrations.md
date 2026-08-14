@@ -10,7 +10,7 @@
 | Webhooks | `/api/v1/admin/webhooks` | 审计事件实时推送到外部系统 | admin session（管理）/ 无（投递） |
 | SCIM v2 | `/scim/v2/*` | 企业目录（Okta/Entra）同步用户与组 | `Bearer <SIGNET_SCIM_BEARER_TOKEN>` |
 
-> 约定：下文 `$ISSUER` 为 Signet 基址（开发 `http://localhost:8443`，生产 `https://signet.ddl.sconts.com`）。所有 admin 管理端点均需先登录拿 `signet_session` Cookie，示例用 `-b /tmp/signet_cookies.txt` 表示。
+> 约定：下文 `$ISSUER` 为 Signet 基址（开发 `http://localhost:8443`，生产 `https://sso.example.com`）。所有 admin 管理端点均需先登录拿 `signet_session` Cookie，示例用 `-b /tmp/signet_cookies.txt` 表示。
 
 ---
 

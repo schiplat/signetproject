@@ -4,7 +4,7 @@
 |---|---|
 | 项目名 | **Signet**（印鉴） |
 | 定位 | 组织内统一身份认证服务（OIDC IdP） |
-| 生产入口（未来） | `https://signet.ddl.sconts.com` |
+| 生产入口（未来） | `https://sso.example.com` |
 | 开发 Issuer | `http://localhost:8443`（`SIGNET_ISSUER`，不绑生产域名） |
 | 协议 | OAuth 2.0 / OIDC **Authorization Code + PKCE** |
 | 首个客户端 | Cella（内网部署、可出网） |
@@ -47,7 +47,7 @@ Signet 可下发可选的 `roles` / `groups` **claims** 作为业务侧的初始
 ```text
                         公网
               ┌─────────────────────┐
-              │  signet.ddl.sconts.com │
+              │  sso.example.com │
               │  Signet (OIDC IdP)     │
               └──────────▲────────────┘
                          │ HTTPS 出站
@@ -72,7 +72,7 @@ OIDC 授权码模式的关键跳转发生在**用户浏览器**：
 | 约束 | 说明 |
 |------|------|
 | 用户浏览器 | 须能同时访问内网业务与公网 Signet |
-| 业务服务器 | 须能出站访问 `signet.ddl.sconts.com` |
+| 业务服务器 | 须能出站访问 `sso.example.com` |
 | `redirect_uri` | 登记为内网回调即可，无需公网可达 |
 | 无 VPN 的外网用户 | 无法完成「回跳内网」，属预期（业务仅内网使用时） |
 | 时钟 | 内网机器时间需准确，否则 JWT 校验失败 |
@@ -89,13 +89,13 @@ OIDC 授权码模式的关键跳转发生在**用户浏览器**：
 ### 3.2 Issuer
 
 ```text
-Issuer: https://signet.ddl.sconts.com
+Issuer: https://sso.example.com
 ```
 
 Discovery（计划支持）：
 
 ```text
-GET https://signet.ddl.sconts.com/.well-known/openid-configuration
+GET https://sso.example.com/.well-known/openid-configuration
 ```
 
 ### 3.3 核心端点（首期）
@@ -172,7 +172,7 @@ AuthorizationCode / RefreshToken / Session
 **必选：**
 
 - `sub`  
-- `iss` = `https://signet.ddl.sconts.com`  
+- `iss` = `https://sso.example.com`  
 - `aud` = `client_id`  
 - `exp` / `iat`  
 - `email`（若有）  
@@ -253,7 +253,7 @@ Signet **不是**对外账户体系：无公开自助注册。
 
 | 配置项（示例名） | 值 |
 |------------------|-----|
-| `OIDC_ISSUER` | 开发 `http://localhost:8443`；生产 `https://signet.ddl.sconts.com` |
+| `OIDC_ISSUER` | 开发 `http://localhost:8443`；生产 `https://sso.example.com` |
 | `OIDC_CLIENT_ID` | 在 Signet 后台 / 动态注册中登记的 `client_id` |
 | `OIDC_CLIENT_SECRET` | 创建客户端时一次性下发的 secret |
 | `OIDC_REDIRECT_URI` | 精确白名单，如 `https://<app-host>/auth/callback` |
@@ -275,7 +275,7 @@ Signet **不是**对外账户体系：无公开自助注册。
 
 ## 7. 安全要求
 
-- 全站 HTTPS（`signet.ddl.sconts.com`）  
+- 全站 HTTPS（`sso.example.com`）  
 - `redirect_uri` **严格白名单**（防开放重定向）  
 - 强制或默认 **PKCE S256**  
 - `state` / `nonce` 防 CSRF / 重放  
@@ -386,7 +386,7 @@ Signet **不是**对外账户体系：无公开自助注册。
 ```text
 SIGNET_DATABASE_URL=
 SIGNET_HTTP_BIND=0.0.0.0:8443
-SIGNET_ISSUER=https://signet.ddl.sconts.com
+SIGNET_ISSUER=https://sso.example.com
 SIGNET_BOOTSTRAP_ADMINS=
 SIGNET_JWT_PRIVATE_KEY=   # 或 KMS 引用
 ```
@@ -400,7 +400,7 @@ SIGNET_JWT_PRIVATE_KEY=   # 或 KMS 引用
 | 旧口头说法 | 现标准称呼 |
 |------------|------------|
 | OSS 单点登录 | **Signet** |
-| OSS 登录页 | Signet 登录（`signet.ddl.sconts.com`） |
+| OSS 登录页 | Signet 登录（`sso.example.com`） |
 | 阿里云 OSS | 对象存储（与本项目无关） |
 
 ---

@@ -13,7 +13,7 @@
 | 环境 | Issuer 示例 |
 |------|-------------|
 | 本地开发 | `http://localhost:8443`（`SIGNET_ISSUER`） |
-| 生产（未来） | `https://signet.ddl.sconts.com` |
+| 生产（未来） | `https://sso.example.com` |
 
 客户端配置应只依赖 **Issuer**，通过 Discovery 发现端点，勿写死相对路径以外的主机假设。
 

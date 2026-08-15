@@ -1,0 +1,130 @@
+name: Build Signet Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag override (default: git tag or Cargo.toml version)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout signet
+        uses: actions/checkout@v4
+        with:
+          path: signet
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.version }}" ]]; then
+            v="${{ inputs.version }}"
+            v="${v#v}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            v="${GITHUB_REF#refs/tags/v}"
+          else
+            v="$(grep '^version' signet/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')"
+          fi
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${v}"
+
+      - name: Validate ACR configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ACR_REGISTRY:?ACR_REGISTRY secret missing}"
+          : "${ACR_NAMESPACE:?ACR_NAMESPACE secret missing}"
+          : "${ACR_REPOSITORY:?ACR_REPOSITORY secret missing}"
+          : "${ACR_USERNAME:?ACR_USERNAME secret missing}"
+          : "${ACR_PASSWORD:?ACR_PASSWORD secret missing}"
+          echo "ACR target: ${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}"
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_REPOSITORY: ${{ secrets.ACR_REPOSITORY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_REPOSITORY }}
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: signet/build/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Config bundle → OSS (config-as-code for the Buz deploy pipeline) ──
+      # Packages deploy/docker-compose.yml + deploy/env.tpl into
+      # configs.tar.gz (files at archive root) and uploads to:
+      #   config_tpl/signet/<version>/configs.tar.gz  (tagged, rollback)
+      - name: Install ossutil
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
+          ossutil --version
+
+      - name: Package and upload config bundle to OSS
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          OSS_AK: ${{ secrets.OSS_AK }}
+          OSS_SK: ${{ secrets.OSS_SK }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          : "${OSS_AK:?OSS_AK secret missing — add Actions secret OSS_AK}"
+          : "${OSS_SK:?OSS_SK secret missing — add Actions secret OSS_SK}"
+          : "${OSS_BUCKET:?OSS_BUCKET secret missing}"
+          : "${OSS_ENDPOINT:?OSS_ENDPOINT secret missing}"
+
+          tar czf configs.tar.gz -C signet/deploy docker-compose.yml env.tpl
+          echo "==> Bundle contents:"
+          tar tzf configs.tar.gz
+          echo "==> OSS target: oss://${OSS_BUCKET}/config_tpl/signet/${VERSION}/configs.tar.gz"
+
+          ossutil cp -f configs.tar.gz \
+            "oss://${OSS_BUCKET}/config_tpl/signet/${VERSION}/configs.tar.gz" \
+            --access-key-id "${OSS_AK}" --access-key-secret "${OSS_SK}" \
+            --endpoint "${OSS_ENDPOINT}" --meta "x-oss-meta-buz-tag:${VERSION}"
+
+          echo "==> Uploaded tag bundle: config_tpl/signet/${VERSION}/configs.tar.gz"

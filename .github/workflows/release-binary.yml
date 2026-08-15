@@ -1,0 +1,84 @@
+name: Release Signet Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Binary version override (default: git tag or Cargo.toml version)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  binary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout signet
+        uses: actions/checkout@v4
+        with:
+          path: signet
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.version }}" ]]; then
+            v="${{ inputs.version }}"
+            v="${v#v}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            v="${GITHUB_REF#refs/tags/v}"
+          else
+            v="$(grep '^version' signet/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')"
+          fi
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${v}"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: signet/dashboard/pnpm-lock.yaml
+
+      # The signet binary embeds the Vue dashboard via rust-embed and the sqlx
+      # migrations, so the frontend must be built (dashboard/dist) before cargo.
+      - name: Build dashboard
+        working-directory: signet/dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: signet
+
+      - name: Build binary
+        working-directory: signet
+        run: cargo build --release -p signet
+
+      - name: Upload binary to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: signet/target/release/signet
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

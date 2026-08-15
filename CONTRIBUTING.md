@@ -7,7 +7,7 @@ Thanks for your interest in contributing to Signet.
 Prerequisites: Rust (stable), Node.js ≥ 18 + pnpm, PostgreSQL ≥ 14.
 
 ```bash
-cp .env.example .env          # configure DATABASE_URL, bootstrap admin, etc.
+cp .env.example .env          # configure SIGNET_DATABASE_URL, etc.
 docker compose --profile dev up db   # optional: local Postgres
 cargo run -p signet           # backend on :8443
 cd dashboard && pnpm install && pnpm dev   # dashboard on :5173

@@ -9,6 +9,7 @@ import LoginView from "@/views/LoginView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import ResetPasswordView from "@/views/ResetPasswordView.vue";
 import SettingsView from "@/views/SettingsView.vue";
+import SetupView from "@/views/SetupView.vue";
 import UsersView from "@/views/UsersView.vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -20,6 +21,12 @@ export const router = createRouter({
       name: "login",
       component: LoginView,
       meta: { public: true },
+    },
+    {
+      path: "/setup",
+      name: "setup",
+      component: SetupView,
+      meta: { public: true, title: "Setup" },
     },
     {
       path: "/reset-password",
@@ -93,21 +100,36 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-  if (to.meta.public) return true;
   const auth = useAuthStore();
   if (!auth.loaded) {
     await auth.fetchMe();
   }
-  if (!auth.isAuthenticated) {
-    return { path: "/login", query: { return_to: to.fullPath } };
+
+  if (auth.isAuthenticated) {
+    if (to.path === "/login" || to.path === "/setup") {
+      return { path: auth.isStaff ? "/overview" : "/activity" };
+    }
+    if (to.meta.public) return true;
+    if (to.meta.admin && !auth.isAdmin) {
+      return { path: auth.isStaff ? "/overview" : "/activity" };
+    }
+    if (to.meta.staff && !auth.isStaff) {
+      return { path: "/activity" };
+    }
+    return true;
   }
-  if (to.meta.admin && !auth.isAdmin) {
-    return { path: auth.isStaff ? "/overview" : "/activity" };
+
+  // Not authenticated: first-run setup takes precedence over login.
+  const needsSetup = await auth.loadSetupStatus();
+  if (needsSetup) {
+    return to.path === "/setup" ? true : { path: "/setup" };
   }
-  if (to.meta.staff && !auth.isStaff) {
-    return { path: "/activity" };
+
+  if (to.meta.public) {
+    return to.path === "/setup" ? { path: "/login" } : true;
   }
-  return true;
+
+  return { path: "/login", query: { return_to: to.fullPath } };
 });
 
 router.afterEach((to) => {

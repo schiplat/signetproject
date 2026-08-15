@@ -4,6 +4,8 @@ import {
   login as apiLogin,
   logout as apiLogout,
   me,
+  fetchSetupStatus,
+  setupAdmin,
   type LoginResult,
   type PublicUser,
   type UserRole,
@@ -12,6 +14,7 @@ import {
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<PublicUser | null>(null);
   const loaded = ref(false);
+  const needsSetup = ref<boolean | null>(null);
 
   const isAuthenticated = computed(() => !!user.value);
   const role = computed<UserRole>(() => user.value?.role ?? "member");
@@ -65,9 +68,35 @@ export const useAuthStore = defineStore("auth", () => {
     user.value = u;
   }
 
+  async function loadSetupStatus(): Promise<boolean> {
+    if (needsSetup.value === null) {
+      try {
+        needsSetup.value = (await fetchSetupStatus()).needs_setup;
+      } catch {
+        needsSetup.value = false;
+      }
+    }
+    return needsSetup.value;
+  }
+
+  async function completeSetup(email: string, password: string, displayName?: string) {
+    const res = await setupAdmin({
+      email,
+      password,
+      display_name: displayName,
+    });
+    if (res.status === "ok") {
+      user.value = res.user;
+      loaded.value = true;
+      needsSetup.value = false;
+    }
+    return res;
+  }
+
   return {
     user,
     loaded,
+    needsSetup,
     isAuthenticated,
     role,
     isAdmin,
@@ -85,5 +114,7 @@ export const useAuthStore = defineStore("auth", () => {
     completeLogin,
     logout,
     setUser,
+    loadSetupStatus,
+    completeSetup,
   };
 });

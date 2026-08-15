@@ -1,0 +1,46 @@
+# Signet production deploy stack (image pull, no build).
+#
+#   cp ../.env.example .env   # local / temporary testing (plain placeholder values)
+#   docker compose pull
+#   docker compose up -d
+#
+# In the Buz pipeline, `env.tpl` (the render template) is delivered from OSS
+# and rendered to `.env` — see env.tpl for the ${secrets.*} / ${vars.*} syntax.
+#
+# First run (no admin yet): open https://<issuer>/ in a browser — the dashboard
+# redirects to /setup where you create the first administrator (email, optional
+# display name, password).
+#
+# signet connects to an EXISTING PostgreSQL via SIGNET_DATABASE_URL (from .env).
+# No database is started here — the `db` service in the repo-root
+# docker-compose.yml is a local-dev convenience only.
+#
+# .env lives NEXT TO this file (deploy/.env). `docker compose` reads it for
+# ${VAR} substitution AND as env_file for signet.
+
+services:
+  signet:
+    image: ${SIGNET_IMAGE:?SIGNET_IMAGE must be set (e.g. <registry>/<namespace>/signet:<tag>)}
+    container_name: signet
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # Host firewall / reverse proxy restricts access — do NOT expose to the
+      # public internet without TLS termination in front (SSO issuer requires
+      # HTTPS; see SIGNET_ISSUER / SIGNET_COOKIE_SECURE in env.tpl).
+      - "0.0.0.0:8443:8443"
+    volumes:
+      # Persists the JWT signing key and the encryption key. Do NOT lose this
+      # volume: rotating keys invalidates issued tokens and stored TOTP secrets.
+      - signet_data:/app/data
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+volumes:
+  signet_data:

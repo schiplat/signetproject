@@ -24,6 +24,7 @@ pub mod ratelimit;
 pub mod request_id;
 pub mod roles;
 pub mod scim;
+pub mod setup;
 pub mod state;
 pub mod static_files;
 pub mod ua;
@@ -39,7 +40,6 @@ use std::sync::Arc;
 pub async fn build_app(cfg: Config) -> anyhow::Result<Router> {
     let pool = db::connect(&cfg.database_url).await?;
     db::migrate(&pool).await?;
-    bootstrap::ensure_admin(&pool, &cfg).await?;
     bootstrap::ensure_scim_token(&pool, &cfg).await?;
 
     if let Err(e) = audit::prune_audit_logs(&pool, cfg.audit_retention_days).await {
@@ -74,7 +74,8 @@ pub async fn build_app(cfg: Config) -> anyhow::Result<Router> {
         .merge(admin::router())
         .merge(audit::router())
         .merge(password_reset::router())
-        .merge(webhooks::router());
+        .merge(webhooks::router())
+        .merge(setup::router());
 
     let api = Router::new()
         .route("/health", get(metrics::health))

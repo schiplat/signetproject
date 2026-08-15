@@ -9,8 +9,6 @@ pub struct Config {
     pub http_bind: SocketAddr,
     pub issuer: String,
     pub cookie_secure: bool,
-    pub bootstrap_admin_email: Option<String>,
-    pub bootstrap_admin_password: Option<String>,
     pub jwt_private_key_path: PathBuf,
     pub encryption_key_path: PathBuf,
     pub session_ttl_hours: i64,
@@ -54,9 +52,6 @@ impl Config {
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes"))
             .unwrap_or(false);
 
-        let bootstrap_admin_email = env::var("SIGNET_BOOTSTRAP_ADMIN_EMAIL").ok();
-        let bootstrap_admin_password = env::var("SIGNET_BOOTSTRAP_ADMIN_PASSWORD").ok();
-
         let jwt_private_key_path = env::var("SIGNET_JWT_PRIVATE_KEY_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("./data/jwt_private.pem"));
@@ -69,8 +64,6 @@ impl Config {
             http_bind,
             issuer,
             cookie_secure,
-            bootstrap_admin_email,
-            bootstrap_admin_password,
             jwt_private_key_path,
             encryption_key_path,
             session_ttl_hours: 12,

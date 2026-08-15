@@ -28,15 +28,12 @@ Unified identity authentication (SSO / OIDC IdP) service.
 
 ```bash
 cp .env.example .env
-# Edit SIGNET_DATABASE_URL / TEST_DATABASE_URL, bootstrap admin password, etc.
+# Edit SIGNET_DATABASE_URL / TEST_DATABASE_URL, etc.
 ```
 
-If no admin exists on first boot, configure:
-
-- `SIGNET_BOOTSTRAP_ADMIN_EMAIL`
-- `SIGNET_BOOTSTRAP_ADMIN_PASSWORD` (≥ 8 characters)
-
-Without an admin and the above variables unset, the process exits fail-fast.
+On first run with no admin, open the dashboard in a browser. It redirects to
+**`/setup`**, where you create the first administrator account (email, optional
+display name, and password).
 
 ### 2. Backend
 
@@ -63,10 +60,8 @@ In production/staging, Rust serves `dashboard/dist` via `rust-embed`.
 
 - **No public registration**; staff accounts are provisioned under **Dashboard → Users** (frontend route `/users`, API `/api/v1/admin/users`)  
 - Roles: `admin` / `manager` / `member` (see design doc)  
-- Cold-start bootstrap creates the first `admin`  
+- First-run **`/setup`** page creates the initial `admin`  
 - Optional **MFA** (global or per-user enforced); users may self-enroll from the account menu  
-
-Default bootstrap (see `.env.example`): `admin@example.com` / `changeme-admin`
 
 ### 5. Observability
 
@@ -90,6 +85,8 @@ Default bootstrap (see `.env.example`): `admin@example.com` / `changeme-admin`
 | `GET/POST /oauth/end_session` | Single logout |
 | `POST /oauth/revoke` | RFC 7009 revocation |
 | `POST /oauth/register` | RFC 7591 dynamic client registration |
+| `GET /api/v1/setup/status` | First-run setup probe (`needs_setup`) |
+| `POST /api/v1/setup` | Create the first admin on first run |
 | `POST /api/v1/password-reset/*` | Password reset (request/confirm) |
 | `GET/POST/DELETE /api/v1/me/passkeys/*` | Passkey (WebAuthn) register/sign-in/manage |
 | `/scim/v2/*` | SCIM v2 user/group sync (Bearer auth) |

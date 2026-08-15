@@ -14,6 +14,8 @@ pub enum AppError {
     Forbidden(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("{0}")]
+    Conflict(String),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
@@ -32,6 +34,10 @@ impl AppError {
     pub fn forbidden(msg: impl Into<String>) -> Self {
         Self::Forbidden(msg.into())
     }
+
+    pub fn conflict(msg: impl Into<String>) -> Self {
+        Self::Conflict(msg.into())
+    }
 }
 
 impl IntoResponse for AppError {
@@ -41,6 +47,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
             AppError::Forbidden(m) => (StatusCode::FORBIDDEN, m.clone()),
             AppError::NotFound(m) => (StatusCode::NOT_FOUND, m.clone()),
+            AppError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             AppError::Anyhow(e) => {
                 tracing::error!(error = %e, "internal error");
                 (

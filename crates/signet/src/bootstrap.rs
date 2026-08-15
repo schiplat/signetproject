@@ -1,55 +1,18 @@
 use crate::config::Config;
-use crate::password::hash_password;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use sqlx::PgPool;
-use uuid::Uuid;
 
-pub async fn ensure_admin(pool: &PgPool, cfg: &Config) -> Result<()> {
-    let admin_count: i64 =
+/// True when at least one active `admin` user exists. Generic over the SQL
+/// executor so it can run against either a `&PgPool` or a `&mut Transaction`.
+pub async fn admin_exists<'c, E>(executor: E) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::PgExecutor<'c>,
+{
+    let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'")
-            .fetch_one(pool)
+            .fetch_one(executor)
             .await?;
-
-    if admin_count > 0 {
-        tracing::info!("admin user already present; skipping bootstrap");
-        return Ok(());
-    }
-
-    let (Some(email), Some(password)) = (
-        cfg.bootstrap_admin_email.as_deref(),
-        cfg.bootstrap_admin_password.as_deref(),
-    ) else {
-        bail!(
-            "no admin user found; set SIGNET_BOOTSTRAP_ADMIN_EMAIL and \
-             SIGNET_BOOTSTRAP_ADMIN_PASSWORD for first-time bootstrap"
-        );
-    };
-
-    if email.trim().is_empty() || password.len() < 8 {
-        bail!("bootstrap admin email must be non-empty and password at least 8 characters");
-    }
-
-    let id = Uuid::new_v4();
-    let sub = id.to_string();
-    let password_hash = hash_password(password)?;
-    let display_name = email.split('@').next().unwrap_or("admin").to_string();
-
-    sqlx::query(
-        r#"
-        INSERT INTO users (id, sub, email, display_name, password_hash, status, role)
-        VALUES ($1, $2, $3, $4, $5, 'active', 'admin')
-        "#,
-    )
-    .bind(id)
-    .bind(&sub)
-    .bind(email.trim().to_lowercase())
-    .bind(display_name)
-    .bind(password_hash)
-    .execute(pool)
-    .await?;
-
-    tracing::info!(email = %email.trim().to_lowercase(), "bootstrap admin created");
-    Ok(())
+    Ok(count > 0)
 }
 
 /// Seed the SCIM bearer token from `SIGNET_SCIM_BEARER_TOKEN` on first boot only.

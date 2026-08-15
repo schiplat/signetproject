@@ -28,15 +28,10 @@
 
 ```bash
 cp .env.example .env
-# 编辑 SIGNET_DATABASE_URL / TEST_DATABASE_URL、bootstrap 管理员密码等
+# 编辑 SIGNET_DATABASE_URL / TEST_DATABASE_URL 等
 ```
 
-首次启动若库中无管理员，需配置：
-
-- `SIGNET_BOOTSTRAP_ADMIN_EMAIL`
-- `SIGNET_BOOTSTRAP_ADMIN_PASSWORD`（≥ 8 字符）
-
-无管理员且未配置上述变量时，进程会 fail-fast 退出。
+首次启动且库中无管理员时，在浏览器打开 Dashboard，会自动跳转到 **`/setup`** 页面，创建首位管理员账户（邮箱、可选显示名）与密码。
 
 ### 2. 后端
 
@@ -63,10 +58,8 @@ cd .. && cargo build -p signet
 
 - **无公开注册**；staff 在 **Dashboard → Users**（前端路由 `/users`，API `/api/v1/admin/users`）开户  
 - 角色：`admin` / `manager` / `member`（见设计文档）  
-- 冷启动 bootstrap 创建首位 `admin`  
+- 首次运行经 **`/setup`** 页面创建首位 `admin`  
 - 可选 **MFA**（全局或按用户强制）；账户菜单可自愿绑定  
-
-默认 bootstrap（见 `.env.example`）：`admin@example.com` / `changeme-admin`
 
 ### 5. 可观测性
 
@@ -90,6 +83,8 @@ cd .. && cargo build -p signet
 | `GET/POST /oauth/end_session` | 统一登出 |
 | `POST /oauth/revoke` | RFC 7009 吊销 |
 | `POST /oauth/register` | RFC 7591 动态客户端注册 |
+| `GET /api/v1/setup/status` | 首次部署探测（`needs_setup`） |
+| `POST /api/v1/setup` | 首次运行创建首位 admin |
 | `POST /api/v1/password-reset/*` | 密码重置（请求/确认） |
 | `GET/POST/DELETE /api/v1/me/passkeys/*` | Passkey（WebAuthn）注册/登录/管理 |
 | `/scim/v2/*` | SCIM v2 用户/组同步（Bearer 认证） |

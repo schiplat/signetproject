@@ -172,6 +172,25 @@ export async function me() {
   return parseJson<{ user: PublicUser }>(res);
 }
 
+export async function fetchSetupStatus() {
+  const res = await fetch("/api/v1/setup/status");
+  return parseJson<{ needs_setup: boolean }>(res);
+}
+
+export async function setupAdmin(body: {
+  email: string;
+  password: string;
+  display_name?: string;
+}) {
+  const res = await fetch("/api/v1/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  return parseJson<{ status: "ok"; user: PublicUser }>(res);
+}
+
 export async function updateMe(body: { display_name: string; phone?: string }) {
   const res = await fetch("/api/v1/me", {
     method: "PATCH",

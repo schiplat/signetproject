@@ -29,6 +29,19 @@ OIDC 协议端点仍为 `/oauth/*` 与 `/.well-known/openid-configuration`（见
 | `DELETE` | `/api/v1/me/consents/{client_id}` | 撤销对某应用的授权（连带吊销其 refresh token） |
 | `GET` | `/api/v1/me/activity` | 当前用户自己的活动记录（登录 + 账号/安全操作），`?page=&page_size=` 分页；并附 `summary`（上次登录 / 活跃会话 / 2FA·passkey / 已授权应用数） |
 
+### 首次部署初始化（首次登录创建管理员）
+
+无任何 active `admin` 用户时，首次访问会跳转到 `/setup` 页面，在 Web 上创建首位管理员（替代早期由环境变量在启动时创建的方式）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/v1/setup/status` | 公开：返回 `{ "needs_setup": true/false }`（是否存在 active admin） |
+| `POST` | `/api/v1/setup` | 公开：创建首位 admin 并登录。body `{ "email", "password", "display_name"? }`；已存在 admin 时返回 `409` |
+
+- `POST /api/v1/setup` 成功后签发会话（`signet_session` Cookie）并返回 `{ "status": "ok", "user": ... }`。
+- 密码校验与普通用户一致（长度 + 大小写 + 数字，见 `SIGNET_PASSWORD_MIN_LENGTH`）。
+- 并发保护：使用 Postgres 咨询锁（advisory lock）保证只创建一个 admin。
+
 ### `POST /api/v1/login`
 
 请求：`{ "email", "password" }`

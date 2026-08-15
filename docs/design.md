@@ -237,9 +237,10 @@ Signet **不是**对外账户体系：无公开自助注册。
 
 服务启动迁移完成后：
 
-1. 若已存在 `role = 'admin'` 且 `status = active` 的用户 → 跳过 bootstrap  
-2. 若不存在管理员 → 读取 `SIGNET_BOOTSTRAP_ADMIN_EMAIL` + `SIGNET_BOOTSTRAP_ADMIN_PASSWORD` 创建首位 `admin`  
-3. 若无管理员且未提供上述变量 → **fail-fast** 退出  
+1. 若已存在 `role = 'admin'` 且 `status = active` 的用户 → 无操作  
+2. 若不存在管理员 → 暴露 **`/setup` 页面**：首次访问时在 Web 上创建管理员账户与密码（`POST /api/v1/setup`），创建后即登录  
+
+`/setup` 创建流程有并发保护（Postgres advisory lock），且创建成功后写审计 `setup.complete`。详见 [api-v1.md](./api-v1.md)。
 
 业务系统（Cella）的「第一个业务管理员」由 **Cella** 自己的 bootstrap 解决，不依赖 Signet 把所有人都设成超管。
 
@@ -387,7 +388,6 @@ Signet **不是**对外账户体系：无公开自助注册。
 SIGNET_DATABASE_URL=
 SIGNET_HTTP_BIND=0.0.0.0:8443
 SIGNET_ISSUER=https://sso.example.com
-SIGNET_BOOTSTRAP_ADMINS=
 SIGNET_JWT_PRIVATE_KEY=   # 或 KMS 引用
 ```
 

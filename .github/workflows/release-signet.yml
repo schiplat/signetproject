@@ -84,7 +84,7 @@ jobs:
       - name: Build and push (linux/amd64 + linux/arm64)
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: signet
           file: signet/build/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true

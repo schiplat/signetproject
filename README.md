@@ -28,7 +28,7 @@ Unified identity authentication (SSO / OIDC IdP) service.
 
 ```bash
 cp .env.example .env
-# Edit SIGNET_DATABASE_URL / TEST_DATABASE_URL, etc.
+# Edit SIGNET_DATABASE_URL, etc.
 ```
 
 On first run with no admin, open the dashboard in a browser. It redirects to

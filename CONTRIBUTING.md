@@ -63,7 +63,7 @@ pnpm build
 
 ## Tests
 
-- Backend tests use `TEST_DATABASE_URL` (falls back to `SIGNET_DATABASE_URL`).
+- Backend tests connect via `SIGNET_DATABASE_URL`.
 - Add or update tests for bug fixes and new behavior where practical.
 
 ## Documentation

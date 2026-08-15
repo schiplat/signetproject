@@ -28,7 +28,7 @@
 
 ```bash
 cp .env.example .env
-# 编辑 SIGNET_DATABASE_URL / TEST_DATABASE_URL 等
+# 编辑 SIGNET_DATABASE_URL 等
 ```
 
 首次启动且库中无管理员时，在浏览器打开 Dashboard，会自动跳转到 **`/setup`** 页面，创建首位管理员账户（邮箱、可选显示名）与密码。

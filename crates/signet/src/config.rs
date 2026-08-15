@@ -36,7 +36,6 @@ impl Config {
         let _ = dotenvy::dotenv();
 
         let database_url = env::var("SIGNET_DATABASE_URL")
-            .or_else(|_| env::var("TEST_DATABASE_URL"))
             .unwrap_or_else(|_| "postgres://signet:signet@127.0.0.1:5433/signet".into());
         let http_bind: SocketAddr = env::var("SIGNET_HTTP_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8443".into())

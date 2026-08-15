@@ -91,7 +91,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min,ignore-error=true
 
       # ── Config bundle → OSS (config-as-code for the Buz deploy pipeline) ──
       # Packages deploy/docker-compose.yml + deploy/env.tpl into

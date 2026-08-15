@@ -18,8 +18,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  binary:
+  meta:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Checkout signet
         uses: actions/checkout@v4
@@ -41,6 +43,25 @@ jobs:
           fi
           echo "version=${v}" >> "$GITHUB_OUTPUT"
           echo "Resolved version: ${v}"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-amd64
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+          - os: macos-15
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout signet
+        uses: actions/checkout@v4
+        with:
+          path: signet
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -74,11 +95,40 @@ jobs:
         working-directory: signet
         run: cargo build --release -p signet
 
-      - name: Upload binary to GitHub Release
+      - name: Stage binary
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="signet-${{ needs.meta.outputs.version }}-${{ matrix.name }}"
+          cp signet/target/release/signet "$name"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.stage.outputs.name }}
+          if-no-files-found: error
+
+  release:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist
+
+      - name: Upload binaries to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: signet/target/release/signet
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          files: dist/signet-*
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.meta.outputs.version) }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

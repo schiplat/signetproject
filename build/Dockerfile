@@ -5,7 +5,7 @@
 
 # --- Stage 1: build the Vue dashboard ------------------------------------
 FROM node:20-alpine AS frontend
-RUN corepack enable && corepack prepare pnpm@9 --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate
 WORKDIR /src/dashboard
 COPY dashboard/package.json dashboard/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

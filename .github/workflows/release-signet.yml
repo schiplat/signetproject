@@ -55,7 +55,7 @@ jobs:
         env:
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-          ACR_REPOSITORY: ${{ secrets.ACR_REPOSITORY }}
+          ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
 
@@ -76,7 +76,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_REPOSITORY }}
+          images: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ vars.ACR_REPOSITORY }}
           tags: |
             type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest

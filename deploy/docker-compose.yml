@@ -15,6 +15,16 @@
 # No database is started here — the `db` service in the repo-root
 # docker-compose.yml is a local-dev convenience only.
 #
+# On gz4, signet joins the `manager-net` Docker network created by the
+# super-manager stack. The DB URL is composed here (see `environment:`) from
+# the POSTGRES_* vars rendered into .env, reaching Postgres by its service
+# name (`postgres`) on manager-net:
+#   postgres://<user>:<password>@postgres:5432/signet
+# Signet connects as a dedicated, least-privilege `signet` role — NOT the
+# cluster superuser. One-time setup (run as the cluster superuser):
+#   docker exec -it manager-postgres psql -U postgres -c "CREATE ROLE signet LOGIN PASSWORD '<app-password>';"
+#   docker exec -it manager-postgres psql -U postgres -c "CREATE DATABASE signet OWNER signet;"
+#
 # .env lives NEXT TO this file (deploy/.env). `docker compose` reads it for
 # ${VAR} substitution AND as env_file for signet.
 
@@ -25,6 +35,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Compose the DB URL from the POSTGRES_* vars in .env; host =
+      # super-manager's `postgres` service name on manager-net. Signet connects
+      # as its own least-privilege role, never the cluster superuser.
+      SIGNET_DATABASE_URL: postgres://${POSTGRES_USER:-signet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-signet}
     ports:
       # Host firewall / reverse proxy restricts access — do NOT expose to the
       # public internet without TLS termination in front (SSO issuer requires
@@ -34,6 +49,8 @@ services:
       # Persists the JWT signing key and the encryption key. Do NOT lose this
       # volume: rotating keys invalidates issued tokens and stored TOTP secrets.
       - signet_data:/app/data
+    networks:
+      - manager-net
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
     deploy:
@@ -44,3 +61,7 @@ services:
 
 volumes:
   signet_data:
+
+networks:
+  manager-net:
+    external: true

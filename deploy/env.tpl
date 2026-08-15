@@ -13,8 +13,17 @@
 # Never commit real passwords. Rotate any secret that was ever in git.
 
 # ── Database (external PostgreSQL) ──
-# Signet does not start its own DB in production. Point at the existing PG.
-SIGNET_DATABASE_URL=${secrets.SIGNET_DATABASE_URL}
+# Signet does not start its own DB in production. Reuses super-manager's
+# Postgres via the shared `manager-net` Docker network. The connection URL is
+# composed in docker-compose.yml from these three vars (host = super-manager's
+# `postgres` service name on manager-net).
+#
+# Security: signet connects as a DEDICATED, least-privilege `signet` role
+# scoped to its own `signet` database — NOT the cluster `postgres` superuser.
+# The superuser credential must never be placed in signet's config.
+POSTGRES_USER=signet
+POSTGRES_PASSWORD=${secrets.SIGNET_POSTGRES_PASSWORD}
+POSTGRES_DB=signet
 
 # ── Issuer / HTTP ──
 # MUST be the public HTTPS origin clients use to reach this IdP.

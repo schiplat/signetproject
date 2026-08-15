@@ -17,7 +17,7 @@
 #
 # On gz4, signet joins the `manager-net` Docker network created by the
 # super-manager stack. The DB URL is composed here (see `environment:`) from
-# the POSTGRES_* vars rendered into .env, reaching Postgres by its service
+# the SIGNET_POSTGRES_* vars rendered into .env, reaching Postgres by its service
 # name (`postgres`) on manager-net:
 #   postgres://<user>:<password>@postgres:5432/signet
 # Signet connects as a dedicated, least-privilege `signet` role — NOT the
@@ -36,10 +36,10 @@ services:
     env_file:
       - .env
     environment:
-      # Compose the DB URL from the POSTGRES_* vars in .env; host =
+      # Compose the DB URL from the SIGNET_POSTGRES_* vars in .env; host =
       # super-manager's `postgres` service name on manager-net. Signet connects
       # as its own least-privilege role, never the cluster superuser.
-      SIGNET_DATABASE_URL: postgres://${POSTGRES_USER:-signet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-signet}
+      SIGNET_DATABASE_URL: postgres://${SIGNET_POSTGRES_USER:-signet}:${SIGNET_POSTGRES_PASSWORD}@postgres:5432/${SIGNET_POSTGRES_DB:-signet}
     ports:
       # Host firewall / reverse proxy restricts access — do NOT expose to the
       # public internet without TLS termination in front (SSO issuer requires

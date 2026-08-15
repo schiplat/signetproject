@@ -21,9 +21,9 @@
 # Security: signet connects as a DEDICATED, least-privilege `signet` role
 # scoped to its own `signet` database — NOT the cluster `postgres` superuser.
 # The superuser credential must never be placed in signet's config.
-POSTGRES_USER=signet
-POSTGRES_PASSWORD=${secrets.SIGNET_POSTGRES_PASSWORD}
-POSTGRES_DB=signet
+SIGNET_POSTGRES_USER=signet
+SIGNET_POSTGRES_PASSWORD=${secrets.SIGNET_POSTGRES_PASSWORD}
+SIGNET_POSTGRES_DB=signet
 
 # ── Issuer / HTTP ──
 # MUST be the public HTTPS origin clients use to reach this IdP.

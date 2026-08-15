@@ -15,7 +15,7 @@ RUN pnpm build
 # --- Stage 2: compile the Rust backend ------------------------------------
 # rust-embed embeds dashboard/dist at compile time, so the built frontend is
 # copied in before `cargo build`. sqlx::migrate! also embeds the migrations dir.
-FROM rust:1.85 AS builder
+FROM rust:1.96 AS builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates

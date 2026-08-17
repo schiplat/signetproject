@@ -4,6 +4,7 @@ export type PublicUser = {
   id: string;
   sub: string;
   email: string;
+  username: string | null;
   display_name: string;
   status: string;
   role: UserRole;
@@ -239,6 +240,14 @@ export async function checkEmail(email: string) {
   return parseJson<{ exists: boolean }>(res);
 }
 
+export async function checkUsername(username: string) {
+  const qs = new URLSearchParams({ username });
+  const res = await fetch(`/api/v1/admin/users/username-check?${qs}`, {
+    credentials: "include",
+  });
+  return parseJson<{ exists: boolean }>(res);
+}
+
 export async function checkPhone(phone: string, excludeId?: string) {
   const qs = new URLSearchParams({ phone });
   if (excludeId) qs.set("exclude_id", excludeId);
@@ -251,6 +260,7 @@ export async function checkPhone(phone: string, excludeId?: string) {
 export async function createUser(body: {
   email: string;
   password: string;
+  username?: string;
   display_name?: string;
   role?: UserRole;
   groups?: string[];
@@ -270,6 +280,7 @@ export async function updateUser(
   id: string,
   body: {
     email?: string;
+    username?: string;
     display_name?: string;
     role?: UserRole;
     password?: string;

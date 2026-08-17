@@ -41,7 +41,7 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> AppR
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, sub, email, display_name, password_hash, status, role,
+        SELECT id, sub, email, username, display_name, password_hash, status, role,
                mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone,
                created_at, updated_at
         FROM users WHERE sub = $1 AND status = 'active'
@@ -60,7 +60,10 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> AppR
     }
     if crate::oidc::scope_contains(scope, "profile") {
         out.insert("name".into(), json!(user.display_name));
-        out.insert("preferred_username".into(), json!(user.email));
+        out.insert(
+            "preferred_username".into(),
+            json!(user.username.as_deref().unwrap_or(&user.email)),
+        );
     }
     if crate::oidc::scope_contains(scope, "groups") {
         out.insert("groups".into(), json!(user.groups));

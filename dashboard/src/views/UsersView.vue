@@ -11,6 +11,7 @@ import {
   batchDisableUsers,
   checkEmail,
   checkPhone,
+  checkUsername,
   createUser,
   deleteUser,
   disableUser,
@@ -37,6 +38,7 @@ const selected = ref<Set<string>>(new Set());
 const batching = ref(false);
 
 const formEmail = ref("");
+const formUsername = ref("");
 const formPassword = ref("");
 const formDisplayName = ref("");
 const formRole = ref<UserRole>("member");
@@ -45,6 +47,7 @@ const formPhone = ref("");
 const formMustChangePassword = ref(false);
 
 const editEmail = ref("");
+const editUsername = ref("");
 const editDisplayName = ref("");
 const editRole = ref<UserRole>("member");
 const editPassword = ref("");
@@ -63,7 +66,10 @@ const filteredUsers = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   if (!q) return users.value;
   return users.value.filter((u) =>
-    [u.email, u.display_name, u.status, u.role].join(" ").toLowerCase().includes(q),
+    [u.email, u.username ?? "", u.display_name, u.status, u.role]
+      .join(" ")
+      .toLowerCase()
+      .includes(q),
   );
 });
 
@@ -176,6 +182,49 @@ watch(editPhone, (val) => {
   }, 350);
 });
 
+const usernameCheckState = ref<"idle" | "checking" | "exists" | "ok">("idle");
+let usernameCheckTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(formUsername, (val) => {
+  if (usernameCheckTimer) clearTimeout(usernameCheckTimer);
+  const username = val.trim();
+  if (!username) {
+    usernameCheckState.value = "idle";
+    return;
+  }
+  usernameCheckState.value = "checking";
+  usernameCheckTimer = setTimeout(async () => {
+    try {
+      const { exists } = await checkUsername(username);
+      usernameCheckState.value = exists ? "exists" : "ok";
+    } catch {
+      usernameCheckState.value = "idle";
+    }
+  }, 350);
+});
+
+const editUsernameCheckState = ref<"idle" | "checking" | "exists" | "ok">("idle");
+let editUsernameCheckTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(editUsername, (val) => {
+  if (editUsernameCheckTimer) clearTimeout(editUsernameCheckTimer);
+  const username = val.trim();
+  const original = editing.value?.username ?? "";
+  if (!username || username === original) {
+    editUsernameCheckState.value = "idle";
+    return;
+  }
+  editUsernameCheckState.value = "checking";
+  editUsernameCheckTimer = setTimeout(async () => {
+    try {
+      const { exists } = await checkUsername(username);
+      editUsernameCheckState.value = exists ? "exists" : "ok";
+    } catch {
+      editUsernameCheckState.value = "idle";
+    }
+  }, 350);
+});
+
 async function refresh() {
   users.value = await listUsers();
   selected.value = new Set(
@@ -210,6 +259,7 @@ function splitGroups(raw: string): string[] {
 
 function openCreate() {
   formEmail.value = "";
+  formUsername.value = "";
   formPassword.value = "";
   formDisplayName.value = "";
   formRole.value = "member";
@@ -218,12 +268,14 @@ function openCreate() {
   formMustChangePassword.value = false;
   emailCheckState.value = "idle";
   phoneCheckState.value = "idle";
+  usernameCheckState.value = "idle";
   showCreate.value = true;
 }
 
 function openEdit(u: PublicUser) {
   editing.value = u;
   editEmail.value = u.email;
+  editUsername.value = u.username ?? "";
   editDisplayName.value = u.display_name;
   editRole.value = u.role;
   editPassword.value = "";
@@ -233,6 +285,7 @@ function openEdit(u: PublicUser) {
   editGroups.value = (u.groups || []).join(", ");
   editPhone.value = u.phone ?? "";
   editPhoneCheckState.value = "idle";
+  editUsernameCheckState.value = "idle";
 }
 
 function toggleOne(id: string, checked: boolean) {
@@ -258,6 +311,7 @@ async function onCreate() {
     await createUser({
       email: formEmail.value,
       password: formPassword.value,
+      username: formUsername.value.trim() || undefined,
       display_name: formDisplayName.value || undefined,
       role: formRole.value,
       groups: splitGroups(formGroups.value),
@@ -280,6 +334,7 @@ async function onSaveEdit() {
   try {
     await updateUser(editing.value.id, {
       email: editEmail.value,
+      username: editUsername.value.trim(),
       display_name: editDisplayName.value,
       role: editRole.value,
       status: editStatus.value,
@@ -500,6 +555,12 @@ async function onBatchDisable() {
                     :class="u.status === 'disabled' && 'line-through decoration-destructive/40'"
                   >
                     {{ u.email }}
+                    <div
+                      v-if="u.username"
+                      class="text-[11px] font-normal text-muted-foreground"
+                    >
+                      @{{ u.username }}
+                    </div>
                     <span
                       v-if="u.status === 'disabled'"
                       class="ml-2 align-middle text-[10px] font-semibold uppercase tracking-[0.06em] text-destructive"
@@ -624,6 +685,16 @@ async function onBatchDisable() {
               </p>
             </div>
             <div>
+              <label class="mb-1 block text-[12px] font-medium">Username</label>
+              <input v-model="formUsername" class="field-input" placeholder="Optional login name" />
+              <p v-if="usernameCheckState === 'exists'" class="mt-1 text-[11px] text-red-500">
+                This username is already taken.
+              </p>
+              <p v-else-if="usernameCheckState === 'checking'" class="mt-1 text-[11px] text-muted-foreground">
+                Checking…
+              </p>
+            </div>
+            <div>
               <label class="mb-1 block text-[12px] font-medium">Display name</label>
               <input v-model="formDisplayName" class="field-input" />
             </div>
@@ -674,7 +745,7 @@ async function onBatchDisable() {
               <UiButton
                 type="submit"
                 size="sm"
-                :disabled="creating || emailCheckState === 'exists' || phoneCheckState === 'exists'"
+                :disabled="creating || emailCheckState === 'exists' || phoneCheckState === 'exists' || usernameCheckState === 'exists'"
               >
                 {{ creating ? "Creating…" : "Create" }}
               </UiButton>
@@ -693,6 +764,16 @@ async function onBatchDisable() {
             <div>
               <label class="mb-1 block text-[12px] font-medium">Email</label>
               <input v-model="editEmail" type="email" required class="field-input" />
+            </div>
+            <div>
+              <label class="mb-1 block text-[12px] font-medium">Username</label>
+              <input v-model="editUsername" class="field-input" placeholder="Optional login name" />
+              <p v-if="editUsernameCheckState === 'exists'" class="mt-1 text-[11px] text-red-500">
+                This username is already taken.
+              </p>
+              <p v-else-if="editUsernameCheckState === 'checking'" class="mt-1 text-[11px] text-muted-foreground">
+                Checking…
+              </p>
             </div>
             <div>
               <label class="mb-1 block text-[12px] font-medium">Display name</label>
@@ -756,7 +837,7 @@ async function onBatchDisable() {
             </div>
             <div class="mt-6 flex justify-end gap-3 border-t border-border/30 pt-5">
               <UiButton type="button" variant="ghost" size="sm" @click="editing = null">Cancel</UiButton>
-              <UiButton type="submit" size="sm" :disabled="saving || editPhoneCheckState === 'exists'">
+              <UiButton type="submit" size="sm" :disabled="saving || editPhoneCheckState === 'exists' || editUsernameCheckState === 'exists'">
                 {{ saving ? "Saving…" : "Save" }}
               </UiButton>
             </div>

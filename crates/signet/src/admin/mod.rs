@@ -5,7 +5,7 @@ use crate::auth::current_user;
 use crate::auth::session::revoke_all_sessions;
 use crate::crypto_util::{random_token, sha256_hex};
 use crate::error::{AppError, AppResult};
-use crate::models::{PublicUser, User, USER_COLS};
+use crate::models::{normalize_username, PublicUser, User, USER_COLS};
 use crate::password::{
     hash_password, record_password_history, set_user_password, validate_password_strength,
 };
@@ -25,6 +25,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin/stats", get(stats))
         .route("/admin/users", get(list_users).post(create_user))
         .route("/admin/users/email-check", get(check_email))
+        .route("/admin/users/username-check", get(check_username))
         .route("/admin/users/phone-check", get(check_phone))
         .route("/admin/users/batch-disable", post(batch_disable_users))
         .route("/admin/users/{id}", put(update_user).delete(delete_user))
@@ -364,6 +365,31 @@ async fn check_email(
 }
 
 #[derive(Debug, Deserialize)]
+struct UsernameCheckQuery {
+    username: String,
+}
+
+async fn check_username(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<UsernameCheckQuery>,
+) -> AppResult<Json<serde_json::Value>> {
+    require_staff_user(&state, &headers).await?;
+    let username = q.username.trim().to_lowercase();
+    let exists = if username.is_empty() {
+        false
+    } else {
+        let n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = $1 OR email = $1")
+                .bind(&username)
+                .fetch_one(&state.pool)
+                .await?;
+        n > 0
+    };
+    Ok(Json(json!({ "exists": exists })))
+}
+
+#[derive(Debug, Deserialize)]
 struct PhoneCheckQuery {
     phone: String,
     exclude_id: Option<Uuid>,
@@ -427,6 +453,7 @@ pub(crate) fn normalize_phone(raw: Option<String>) -> AppResult<Option<String>> 
 struct CreateUserBody {
     email: String,
     password: String,
+    username: Option<String>,
     display_name: Option<String>,
     role: Option<String>,
     groups: Option<Vec<String>>,
@@ -445,12 +472,25 @@ async fn create_user(
     if email.is_empty() || !email.contains('@') {
         return Err(AppError::bad_request("invalid email"));
     }
-    let email_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = $1")
-        .bind(&email)
-        .fetch_one(&state.pool)
-        .await?;
+    let email_exists: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = $1 OR username = $1")
+            .bind(&email)
+            .fetch_one(&state.pool)
+            .await?;
     if email_exists > 0 {
         return Err(AppError::bad_request("email already exists"));
+    }
+
+    let username = normalize_username(body.username.as_deref());
+    if let Some(u) = &username {
+        let username_exists: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = $1 OR email = $1")
+                .bind(u)
+                .fetch_one(&state.pool)
+                .await?;
+        if username_exists > 0 {
+            return Err(AppError::bad_request("username already exists"));
+        }
     }
     validate_password_strength(&body.password, state.config.password_min_length)
         .map_err(|e| AppError::bad_request(e.to_string()))?;
@@ -479,14 +519,15 @@ async fn create_user(
 
     let user = sqlx::query_as::<_, User>(&format!(
         r#"
-        INSERT INTO users (id, sub, email, display_name, password_hash, status, role, groups, phone, must_change_password, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, $10, $10)
+        INSERT INTO users (id, sub, email, username, display_name, password_hash, status, role, groups, phone, must_change_password, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10, $11, $11)
         RETURNING {USER_COLS}
         "#
     ))
     .bind(id)
     .bind(&sub)
     .bind(&email)
+    .bind(&username)
     .bind(&display_name)
     .bind(password_hash)
     .bind(role.as_str())
@@ -528,6 +569,7 @@ async fn create_user(
 #[derive(Debug, Deserialize)]
 struct UpdateUserBody {
     email: Option<String>,
+    username: Option<String>,
     display_name: Option<String>,
     role: Option<String>,
     password: Option<String>,
@@ -561,12 +603,35 @@ async fn update_user(
     };
 
     if email != target.email {
-        let email_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = $1")
-            .bind(&email)
-            .fetch_one(&state.pool)
-            .await?;
+        let email_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE (email = $1 OR username = $1) AND id <> $2",
+        )
+        .bind(&email)
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
         if email_exists > 0 {
             return Err(AppError::bad_request("email already exists"));
+        }
+    }
+
+    let username = if body.username.is_some() {
+        normalize_username(body.username.as_deref())
+    } else {
+        target.username.clone()
+    };
+    if let Some(u) = &username {
+        if target.username.as_deref() != Some(u.as_str()) {
+            let username_exists: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM users WHERE (username = $1 OR email = $1) AND id <> $2",
+            )
+            .bind(u)
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await?;
+            if username_exists > 0 {
+                return Err(AppError::bad_request("username already exists"));
+            }
         }
     }
 
@@ -636,7 +701,8 @@ async fn update_user(
         r#"
         UPDATE users
         SET email = $2, display_name = $3, role = $4, status = $5,
-            mfa_required = $6, must_change_password = $7, groups = $8, phone = $9, updated_at = NOW()
+            mfa_required = $6, must_change_password = $7, groups = $8, phone = $9,
+            username = $10, updated_at = NOW()
         WHERE id = $1
         RETURNING {USER_COLS}
         "#
@@ -650,6 +716,7 @@ async fn update_user(
     .bind(must_change_password)
     .bind(groups)
     .bind(phone)
+    .bind(&username)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| match e {
@@ -658,6 +725,9 @@ async fn update_user(
         }
         sqlx::Error::Database(db) if db.constraint() == Some("users_phone_key") => {
             AppError::bad_request("phone already exists")
+        }
+        sqlx::Error::Database(db) if db.constraint() == Some("users_username_key") => {
+            AppError::bad_request("username already exists")
         }
         other => AppError::from(other),
     })?;

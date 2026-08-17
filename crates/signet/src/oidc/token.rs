@@ -40,6 +40,8 @@ struct IdTokenClaims {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    preferred_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     groups: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     phone_number: Option<String>,
@@ -235,7 +237,7 @@ async fn issue_from_refresh(
 async fn load_user(state: &AppState, user_id: Uuid) -> AppResult<User> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, sub, email, display_name, password_hash, status, role,
+        SELECT id, sub, email, username, display_name, password_hash, status, role,
                mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone,
                created_at, updated_at
         FROM users WHERE id = $1 AND status = 'active'
@@ -278,6 +280,8 @@ async fn build_token_response(
         nonce,
         email: crate::oidc::scope_contains(scope, "email").then(|| user.email.clone()),
         name: crate::oidc::scope_contains(scope, "profile").then(|| user.display_name.clone()),
+        preferred_username: crate::oidc::scope_contains(scope, "profile")
+            .then(|| user.username.clone().unwrap_or_else(|| user.email.clone())),
         groups: crate::oidc::scope_contains(scope, "groups").then(|| user.groups.clone()),
         phone_number: crate::oidc::scope_contains(scope, "phone")
             .then(|| user.phone.clone())

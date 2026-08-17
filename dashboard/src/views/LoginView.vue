@@ -206,12 +206,12 @@ function backToPassword() {
 
       <form v-if="step === 'password'" class="space-y-4" @submit.prevent="handleLogin">
         <div class="space-y-1.5">
-          <label class="type-label">Email</label>
+          <label class="type-label">Email or username</label>
           <input
             v-model="email"
-            type="email"
+            type="text"
             autocomplete="username"
-            placeholder="admin@example.com"
+            placeholder="you@example.com or username"
             class="field-input"
             required
           />

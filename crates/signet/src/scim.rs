@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
-use crate::password::hash_password;
+use crate::models::normalize_username;
+use crate::password::{hash_password, record_password_history};
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
@@ -64,6 +65,7 @@ async fn authorize(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
 struct ScimUserRow {
     id: Uuid,
     email: String,
+    username: Option<String>,
     display_name: String,
     status: String,
     groups: Vec<String>,
@@ -77,7 +79,7 @@ fn user_resource(u: &ScimUserRow) -> Value {
         "schemas": [USER_SCHEMA],
         "id": u.id.to_string(),
         "externalId": u.external_id,
-        "userName": u.email,
+        "userName": u.username.as_deref().unwrap_or(&u.email),
         "displayName": u.display_name,
         "name": { "formatted": u.display_name },
         "active": u.status == "active",
@@ -92,7 +94,7 @@ fn user_resource(u: &ScimUserRow) -> Value {
 }
 
 const USER_SELECT: &str =
-    "id, email, display_name, status, groups, external_id, created_at, updated_at";
+    "id, email, username, display_name, status, groups, external_id, created_at, updated_at";
 
 #[derive(Debug, Deserialize)]
 struct ListQuery {
@@ -129,6 +131,30 @@ async fn list_users(
 }
 
 #[derive(Debug, Deserialize)]
+struct EmailAttr {
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default)]
+    primary: Option<bool>,
+}
+
+/// Picks the primary email from a SCIM `emails` array (falling back to the
+/// first non-empty value), normalized for storage.
+fn primary_email(emails: &[EmailAttr]) -> Option<String> {
+    let pick = emails
+        .iter()
+        .filter(|e| e.value.as_deref().is_some_and(|v| !v.trim().is_empty()))
+        .find(|e| e.primary == Some(true))
+        .or_else(|| {
+            emails
+                .iter()
+                .find(|e| e.value.as_deref().is_some_and(|v| !v.trim().is_empty()))
+        });
+    pick.and_then(|e| e.value.as_deref())
+        .map(|v| v.trim().to_lowercase())
+}
+
+#[derive(Debug, Deserialize)]
 struct CreateUserBody {
     #[serde(rename = "userName")]
     user_name: String,
@@ -140,6 +166,8 @@ struct CreateUserBody {
     active: Option<bool>,
     #[serde(default)]
     password: Option<String>,
+    #[serde(default)]
+    emails: Vec<EmailAttr>,
 }
 
 async fn create_user(
@@ -148,9 +176,31 @@ async fn create_user(
     Json(body): Json<CreateUserBody>,
 ) -> AppResult<Json<Value>> {
     authorize(&state, &headers).await?;
-    let email = body.user_name.trim().to_lowercase();
-    if email.is_empty() || !email.contains('@') {
-        return Err(AppError::bad_request("userName must be a valid email"));
+    let username = body.user_name.trim().to_lowercase();
+    if username.is_empty() {
+        return Err(AppError::bad_request("userName is required"));
+    }
+    let email = primary_email(&body.emails).unwrap_or_else(|| username.clone());
+
+    // Enforce uniqueness across both identifier namespaces so login stays
+    // unambiguous (a username must not equal any email and vice versa).
+    let username_exists: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = $1 OR email = $1")
+            .bind(&username)
+            .fetch_one(&state.pool)
+            .await?;
+    if username_exists > 0 {
+        return Err(AppError::bad_request("userName already exists"));
+    }
+    if email != username {
+        let email_exists: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = $1 OR username = $1")
+                .bind(&email)
+                .fetch_one(&state.pool)
+                .await?;
+        if email_exists > 0 {
+            return Err(AppError::bad_request("email already exists"));
+        }
     }
 
     let display_name = body
@@ -158,7 +208,7 @@ async fn create_user(
         .clone()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| email.clone());
+        .unwrap_or_else(|| username.clone());
 
     let id = Uuid::new_v4();
     let sub = id.to_string();
@@ -174,22 +224,26 @@ async fn create_user(
 
     let row = sqlx::query_as::<_, ScimUserRow>(&format!(
         r#"
-        INSERT INTO users (id, sub, email, display_name, password_hash, status, role, groups, phone, external_id, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, 'user', ARRAY[]::text[], NULL, $7, NOW(), NOW())
+        INSERT INTO users (id, sub, email, username, display_name, password_hash, status, role, groups, phone, external_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'user', ARRAY[]::text[], NULL, $8, NOW(), NOW())
         RETURNING {USER_SELECT}
         "#
     ))
     .bind(id)
     .bind(&sub)
     .bind(&email)
+    .bind(&username)
     .bind(&display_name)
-    .bind(password_hash)
+    .bind(&password_hash)
     .bind(status)
     .bind(body.external_id.as_deref().map(str::trim).filter(|s| !s.is_empty()))
     .fetch_one(&state.pool)
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.constraint() == Some("users_email_key") => {
+            AppError::bad_request("email already exists")
+        }
+        sqlx::Error::Database(db) if db.constraint() == Some("users_username_key") => {
             AppError::bad_request("userName already exists")
         }
         sqlx::Error::Database(db) if db.constraint() == Some("users_external_id_key") => {
@@ -197,6 +251,8 @@ async fn create_user(
         }
         other => AppError::from(other),
     })?;
+
+    record_password_history(&state.pool, row.id, &password_hash).await?;
 
     crate::audit::record(
         &state.pool,
@@ -238,7 +294,7 @@ async fn find_user(state: &AppState, id: &str) -> AppResult<ScimUserRow> {
         }
     }
     sqlx::query_as::<_, ScimUserRow>(&format!(
-        "SELECT {USER_SELECT} FROM users WHERE external_id = $1 OR email = $1"
+        "SELECT {USER_SELECT} FROM users WHERE external_id = $1 OR email = $1 OR username = $1"
     ))
     .bind(id)
     .fetch_optional(&state.pool)
@@ -256,6 +312,8 @@ struct PutUserBody {
     external_id: Option<String>,
     #[serde(default)]
     active: Option<bool>,
+    #[serde(default)]
+    emails: Vec<EmailAttr>,
 }
 
 async fn put_user(
@@ -267,17 +325,48 @@ async fn put_user(
     authorize(&state, &headers).await?;
     let existing = find_user(&state, &id).await?;
 
-    let email = body.user_name.map(|s| s.trim().to_lowercase());
+    let username = normalize_username(body.user_name.as_deref());
+    let email = primary_email(&body.emails);
     let display_name = body.display_name.map(|s| s.trim().to_string());
     let status = body.active.map(|a| if a { "active" } else { "disabled" });
+
+    if let Some(u) = &username {
+        if existing.username.as_deref() != Some(u.as_str()) {
+            let n: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM users WHERE (username = $1 OR email = $1) AND id <> $2",
+            )
+            .bind(u)
+            .bind(existing.id)
+            .fetch_one(&state.pool)
+            .await?;
+            if n > 0 {
+                return Err(AppError::bad_request("userName already exists"));
+            }
+        }
+    }
+    if let Some(e) = &email {
+        if existing.email != *e {
+            let n: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM users WHERE (email = $1 OR username = $1) AND id <> $2",
+            )
+            .bind(e)
+            .bind(existing.id)
+            .fetch_one(&state.pool)
+            .await?;
+            if n > 0 {
+                return Err(AppError::bad_request("email already exists"));
+            }
+        }
+    }
 
     let row = sqlx::query_as::<_, ScimUserRow>(&format!(
         r#"
         UPDATE users SET
             email = COALESCE($2, email),
-            display_name = COALESCE($3, display_name),
-            status = COALESCE($4, status),
-            external_id = $5,
+            username = COALESCE($3, username),
+            display_name = COALESCE($4, display_name),
+            status = COALESCE($5, status),
+            external_id = $6,
             updated_at = NOW()
         WHERE id = $1
         RETURNING {USER_SELECT}
@@ -285,6 +374,7 @@ async fn put_user(
     ))
     .bind(existing.id)
     .bind(email.as_deref())
+    .bind(username.as_deref())
     .bind(display_name.as_deref())
     .bind(status)
     .bind(
@@ -294,7 +384,19 @@ async fn put_user(
             .filter(|s| !s.is_empty()),
     )
     .fetch_one(&state.pool)
-    .await?;
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.constraint() == Some("users_email_key") => {
+            AppError::bad_request("email already exists")
+        }
+        sqlx::Error::Database(db) if db.constraint() == Some("users_username_key") => {
+            AppError::bad_request("userName already exists")
+        }
+        sqlx::Error::Database(db) if db.constraint() == Some("users_external_id_key") => {
+            AppError::bad_request("externalId already exists")
+        }
+        other => AppError::from(other),
+    })?;
 
     Ok(Json(user_resource(&row)))
 }

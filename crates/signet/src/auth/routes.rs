@@ -52,12 +52,13 @@ async fn login(
     Json(body): Json<LoginBody>,
 ) -> AppResult<impl IntoResponse> {
     let email = body.email.trim().to_lowercase();
-    let user =
-        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE email = $1"))
-            .bind(&email)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::unauthorized("invalid email or password"))?;
+    let user = sqlx::query_as::<_, User>(&format!(
+        "SELECT {USER_COLS} FROM users WHERE email = $1 OR username = $1"
+    ))
+    .bind(&email)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::unauthorized("invalid email/username or password"))?;
 
     if user.status != "active" {
         return Err(AppError::unauthorized("account disabled"));

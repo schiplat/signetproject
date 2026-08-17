@@ -299,11 +299,12 @@ async fn login_start(
     Json(body): Json<LoginStartBody>,
 ) -> AppResult<Json<Value>> {
     let email = body.email.trim().to_lowercase();
-    let user: Option<(Uuid,)> =
-        sqlx::query_as("SELECT id FROM users WHERE email = $1 AND status = 'active'")
-            .bind(&email)
-            .fetch_optional(&state.pool)
-            .await?;
+    let user: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM users WHERE (email = $1 OR username = $1) AND status = 'active'",
+    )
+    .bind(&email)
+    .fetch_optional(&state.pool)
+    .await?;
     let Some((user_id,)) = user else {
         return Err(AppError::bad_request("no passkeys for this account"));
     };

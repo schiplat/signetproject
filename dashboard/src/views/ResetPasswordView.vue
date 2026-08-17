@@ -73,12 +73,12 @@ async function handleConfirm() {
 
       <form v-if="step === 'request'" class="space-y-4" @submit.prevent="handleRequest">
         <div class="space-y-1.5">
-          <label class="type-label">Email</label>
+          <label class="type-label">Email or username</label>
           <input
             v-model="email"
-            type="email"
+            type="text"
             autocomplete="username"
-            placeholder="admin@example.com"
+            placeholder="you@example.com or username"
             class="field-input"
             required
           />

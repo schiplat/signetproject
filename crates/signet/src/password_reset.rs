@@ -143,10 +143,11 @@ async fn confirm_reset(
 }
 
 async fn find_user_by_email(state: &AppState, email: &str) -> AppResult<Option<(Uuid, String)>> {
-    let row: Option<(Uuid, String)> =
-        sqlx::query_as("SELECT id, email FROM users WHERE email = $1 AND status = 'active'")
-            .bind(email)
-            .fetch_optional(&state.pool)
-            .await?;
+    let row: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, email FROM users WHERE (email = $1 OR username = $1) AND status = 'active'",
+    )
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await?;
     Ok(row)
 }

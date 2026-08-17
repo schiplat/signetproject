@@ -2,15 +2,24 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-pub const USER_COLS: &str = "id, sub, email, display_name, password_hash, status, role, \
+pub const USER_COLS: &str = "id, sub, email, username, display_name, password_hash, status, role, \
     mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone, \
     created_at, updated_at";
+
+/// Normalizes a username for storage and lookup: trimmed, lowercased, and
+/// mapped to `None` when empty so email-only accounts keep a NULL username.
+pub fn normalize_username(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .map(str::to_lowercase)
+        .filter(|s| !s.is_empty())
+}
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct User {
     pub id: Uuid,
     pub sub: String,
     pub email: String,
+    pub username: Option<String>,
     pub display_name: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
@@ -47,6 +56,7 @@ pub struct PublicUser {
     pub id: Uuid,
     pub sub: String,
     pub email: String,
+    pub username: Option<String>,
     pub display_name: String,
     pub status: String,
     pub role: String,
@@ -67,6 +77,7 @@ impl From<User> for PublicUser {
             id: u.id,
             sub: u.sub,
             email: u.email,
+            username: u.username,
             display_name: u.display_name,
             status: u.status,
             role: u.role,

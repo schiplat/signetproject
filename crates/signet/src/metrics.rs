@@ -23,7 +23,9 @@ static HTTP_5XX: AtomicU64 = AtomicU64::new(0);
 static HTTP_IN_FLIGHT: AtomicU64 = AtomicU64::new(0);
 
 // Fixed-bucket latency histogram (seconds).
-static BUCKETS: [f64; 11] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+static BUCKETS: [f64; 11] = [
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+];
 static BUCKET_COUNTS: [AtomicU64; 11] = [
     AtomicU64::new(0),
     AtomicU64::new(0),
@@ -104,7 +106,10 @@ fn render() -> String {
 
     out.push_str("# HELP signet_logins_total Successful Signet sign-ins (sessions established).\n");
     out.push_str("# TYPE signet_logins_total counter\n");
-    out.push_str(&format!("signet_logins_total {}\n", LOGINS_TOTAL.load(Ordering::Relaxed)));
+    out.push_str(&format!(
+        "signet_logins_total {}\n",
+        LOGINS_TOTAL.load(Ordering::Relaxed)
+    ));
 
     out.push_str("# HELP signet_login_failures_total Failed password logins.\n");
     out.push_str("# TYPE signet_login_failures_total counter\n");
@@ -136,10 +141,26 @@ fn render() -> String {
 
     out.push_str("# HELP signet_http_requests_total Total HTTP requests by status class.\n");
     out.push_str("# TYPE signet_http_requests_total counter\n");
-    out.push_str(&format!("signet_http_requests_total{} {}\n", "{status=\"2xx\"}", HTTP_2XX.load(Ordering::Relaxed)));
-    out.push_str(&format!("signet_http_requests_total{} {}\n", "{status=\"3xx\"}", HTTP_3XX.load(Ordering::Relaxed)));
-    out.push_str(&format!("signet_http_requests_total{} {}\n", "{status=\"4xx\"}", HTTP_4XX.load(Ordering::Relaxed)));
-    out.push_str(&format!("signet_http_requests_total{} {}\n", "{status=\"5xx\"}", HTTP_5XX.load(Ordering::Relaxed)));
+    out.push_str(&format!(
+        "signet_http_requests_total{} {}\n",
+        "{status=\"2xx\"}",
+        HTTP_2XX.load(Ordering::Relaxed)
+    ));
+    out.push_str(&format!(
+        "signet_http_requests_total{} {}\n",
+        "{status=\"3xx\"}",
+        HTTP_3XX.load(Ordering::Relaxed)
+    ));
+    out.push_str(&format!(
+        "signet_http_requests_total{} {}\n",
+        "{status=\"4xx\"}",
+        HTTP_4XX.load(Ordering::Relaxed)
+    ));
+    out.push_str(&format!(
+        "signet_http_requests_total{} {}\n",
+        "{status=\"5xx\"}",
+        HTTP_5XX.load(Ordering::Relaxed)
+    ));
 
     out.push_str("# HELP signet_http_requests_in_flight Current in-flight requests.\n");
     out.push_str("# TYPE signet_http_requests_in_flight gauge\n");

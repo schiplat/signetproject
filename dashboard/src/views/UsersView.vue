@@ -42,6 +42,7 @@ const formDisplayName = ref("");
 const formRole = ref<UserRole>("member");
 const formGroups = ref("");
 const formPhone = ref("");
+const formMustChangePassword = ref(false);
 
 const editEmail = ref("");
 const editDisplayName = ref("");
@@ -49,6 +50,7 @@ const editRole = ref<UserRole>("member");
 const editPassword = ref("");
 const editStatus = ref("active");
 const editMfaRequired = ref(false);
+const editMustChangePassword = ref(false);
 const editGroups = ref("");
 const editPhone = ref("");
 
@@ -213,6 +215,7 @@ function openCreate() {
   formRole.value = "member";
   formGroups.value = "";
   formPhone.value = "";
+  formMustChangePassword.value = false;
   emailCheckState.value = "idle";
   phoneCheckState.value = "idle";
   showCreate.value = true;
@@ -226,6 +229,7 @@ function openEdit(u: PublicUser) {
   editPassword.value = "";
   editStatus.value = u.status;
   editMfaRequired.value = u.mfa_required;
+  editMustChangePassword.value = u.must_change_password;
   editGroups.value = (u.groups || []).join(", ");
   editPhone.value = u.phone ?? "";
   editPhoneCheckState.value = "idle";
@@ -258,6 +262,7 @@ async function onCreate() {
       role: formRole.value,
       groups: splitGroups(formGroups.value),
       phone: formPhone.value.trim() || undefined,
+      must_change_password: formMustChangePassword.value,
     });
     showCreate.value = false;
     await refresh();
@@ -280,6 +285,7 @@ async function onSaveEdit() {
       status: editStatus.value,
       password: editPassword.value || undefined,
       mfa_required: editMfaRequired.value,
+      must_change_password: editMustChangePassword.value,
       groups: splitGroups(editGroups.value),
       phone: editPhone.value.trim(),
     });
@@ -642,6 +648,13 @@ async function onBatchDisable() {
                 class="field-input"
               />
             </div>
+            <label class="flex items-start gap-2 text-sm">
+              <input v-model="formMustChangePassword" type="checkbox" class="mt-0.5 rounded" />
+              <span>
+                <span class="block text-[12px] font-medium">Require password change</span>
+                <span class="type-meta">Force this user to set a new password on first login</span>
+              </span>
+            </label>
             <div>
               <label class="mb-1 block text-[12px] font-medium">Role</label>
               <select v-model="formRole" class="field-input">
@@ -713,6 +726,13 @@ async function onBatchDisable() {
               <span>
                 <span class="block text-[12px] font-medium">Require MFA</span>
                 <span class="type-meta">Force authenticator setup on next login if not enabled</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 text-sm">
+              <input v-model="editMustChangePassword" type="checkbox" class="mt-0.5 rounded" />
+              <span>
+                <span class="block text-[12px] font-medium">Require password change</span>
+                <span class="type-meta">Force this user to set a new password on next login</span>
               </span>
             </label>
             <div>

@@ -12,7 +12,11 @@ struct LocalTime;
 
 impl FormatTime for LocalTime {
     fn format_time(&self, w: &mut Writer<'_>) -> fmt::Result {
-        write!(w, "{}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3fZ"))
+        write!(
+            w,
+            "{}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3fZ")
+        )
     }
 }
 
@@ -20,8 +24,9 @@ fn init_logger() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,signet=debug"));
 
-    let is_production =
-        std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false);
+    let is_production = std::env::var("APP_ENV")
+        .map(|v| v == "production")
+        .unwrap_or(false);
 
     if is_production {
         // Production: flat single-line JSON for log aggregation.

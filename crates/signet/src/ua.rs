@@ -14,7 +14,11 @@ fn detect_browser(ua: &str) -> Option<String> {
         return Some(with_major(ua.as_str(), "edge", "edg/"));
     }
     if ua.contains("opr/") || ua.contains("opera") {
-        let tok = if ua.contains("opr/") { "opr/" } else { "version/" };
+        let tok = if ua.contains("opr/") {
+            "opr/"
+        } else {
+            "version/"
+        };
         return Some(with_major(ua.as_str(), "opera", tok));
     }
     if ua.contains("crios/") {
@@ -85,5 +89,9 @@ fn major_version(ua: &str, token: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_ascii_digit() || *c == '.')
         .collect();
-    digits.split('.').next().filter(|s| !s.is_empty()).map(str::to_string)
+    digits
+        .split('.')
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }

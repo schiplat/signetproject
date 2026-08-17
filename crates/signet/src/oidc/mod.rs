@@ -8,8 +8,8 @@ mod revoke;
 mod token;
 mod userinfo;
 
-use crate::state::AppState;
 use crate::error::AppResult;
+use crate::state::AppState;
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -25,7 +25,7 @@ pub(crate) fn scope_contains(scope: &str, wanted: &str) -> bool {
 pub(crate) fn normalize_scope(scope: &str) -> String {
     let mut seen: Vec<&str> = Vec::new();
     for s in scope.split_whitespace() {
-        if !seen.iter().any(|x| *x == s) {
+        if !seen.contains(&s) {
             seen.push(s);
         }
     }
@@ -34,7 +34,9 @@ pub(crate) fn normalize_scope(scope: &str) -> String {
 
 /// Returns true when every requested scope is present in `granted`.
 pub(crate) fn scope_covered(granted: &str, requested: &str) -> bool {
-    requested.split_whitespace().all(|r| scope_contains(granted, r))
+    requested
+        .split_whitespace()
+        .all(|r| scope_contains(granted, r))
 }
 
 /// Rejects any requested scope that is not in the client's registered `scopes`
@@ -57,11 +59,17 @@ pub fn router() -> Router<AppState> {
             get(discovery::openid_configuration),
         )
         .route("/oauth/jwks", get(jwks::jwks))
-        .route("/oauth/authorize", get(authorize::authorize).post(authorize::authorize))
+        .route(
+            "/oauth/authorize",
+            get(authorize::authorize).post(authorize::authorize),
+        )
         .route("/oauth/token", post(token::token))
         .route("/oauth/revoke", post(revoke::revoke))
         .route("/oauth/register", post(register::register))
-        .route("/oauth/userinfo", get(userinfo::userinfo).post(userinfo::userinfo))
+        .route(
+            "/oauth/userinfo",
+            get(userinfo::userinfo).post(userinfo::userinfo),
+        )
         .route(
             "/oauth/end_session",
             get(end_session::end_session).post(end_session::end_session),

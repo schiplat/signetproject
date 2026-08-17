@@ -112,10 +112,9 @@ pub(crate) fn resolve_client_credentials_parts(
         }
     }
 
-    let id = form_client_id
-        .ok_or_else(|| AppError::unauthorized("missing client_id"))?;
-    let secret = form_client_secret
-        .ok_or_else(|| AppError::unauthorized("missing client_secret"))?;
+    let id = form_client_id.ok_or_else(|| AppError::unauthorized("missing client_id"))?;
+    let secret =
+        form_client_secret.ok_or_else(|| AppError::unauthorized("missing client_secret"))?;
     Ok((id.to_string(), secret.to_string()))
 }
 
@@ -237,7 +236,8 @@ async fn load_user(state: &AppState, user_id: Uuid) -> AppResult<User> {
     sqlx::query_as::<_, User>(
         r#"
         SELECT id, sub, email, display_name, password_hash, status, role,
-               mfa_required, totp_enabled, totp_secret, groups, phone, created_at, updated_at
+               mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone,
+               created_at, updated_at
         FROM users WHERE id = $1 AND status = 'active'
         "#,
     )

@@ -41,8 +41,7 @@ impl Config {
             .unwrap_or_else(|_| "0.0.0.0:8443".into())
             .parse()
             .context("invalid SIGNET_HTTP_BIND")?;
-        let issuer =
-            env::var("SIGNET_ISSUER").unwrap_or_else(|_| "http://localhost:8443".into());
+        let issuer = env::var("SIGNET_ISSUER").unwrap_or_else(|_| "http://localhost:8443".into());
         if issuer.ends_with('/') {
             bail!("SIGNET_ISSUER must not end with '/'");
         }
@@ -94,8 +93,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(300),
-            email_from: env::var("SIGNET_EMAIL_FROM")
-                .unwrap_or_else(|_| "signet@localhost".into()),
+            email_from: env::var("SIGNET_EMAIL_FROM").unwrap_or_else(|_| "signet@localhost".into()),
             smtp_host: env::var("SIGNET_SMTP_HOST").ok(),
             smtp_port: env::var("SIGNET_SMTP_PORT")
                 .ok()

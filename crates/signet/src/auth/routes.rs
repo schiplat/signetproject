@@ -5,7 +5,7 @@ use crate::auth::session::{
 };
 use crate::error::{AppError, AppResult};
 use crate::http_util::client_ip;
-use crate::mfa::begin_login_mfa_flow;
+use crate::mfa::{begin_login_mfa_flow, force_password_change};
 use crate::models::{PublicUser, User, USER_COLS};
 use crate::password::{set_user_password, verify_password};
 use crate::state::AppState;
@@ -24,10 +24,14 @@ use uuid::Uuid;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login))
+        .route("/login/password-change", post(force_password_change))
         .route("/logout", post(logout))
         .route("/me", get(me).patch(update_me))
         .route("/me/password", post(change_password))
-        .route("/me/sessions", get(list_my_sessions).post(revoke_other_sessions))
+        .route(
+            "/me/sessions",
+            get(list_my_sessions).post(revoke_other_sessions),
+        )
         .route("/me/sessions/{id}", delete(revoke_my_session))
         .route("/me/consents", get(list_my_consents))
         .route("/me/consents/{client_id}", delete(revoke_my_consent))
@@ -48,13 +52,12 @@ async fn login(
     Json(body): Json<LoginBody>,
 ) -> AppResult<impl IntoResponse> {
     let email = body.email.trim().to_lowercase();
-    let user = sqlx::query_as::<_, User>(&format!(
-        "SELECT {USER_COLS} FROM users WHERE email = $1"
-    ))
-    .bind(&email)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::unauthorized("invalid email or password"))?;
+    let user =
+        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE email = $1"))
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::unauthorized("invalid email or password"))?;
 
     if user.status != "active" {
         return Err(AppError::unauthorized("account disabled"));
@@ -62,12 +65,11 @@ async fn login(
 
     let ip = client_ip(&headers, Some(addr));
 
-    let lock: (i32, Option<DateTime<Utc>>) = sqlx::query_as(
-        "SELECT failed_login_attempts, locked_until FROM users WHERE id = $1",
-    )
-    .bind(user.id)
-    .fetch_one(&state.pool)
-    .await?;
+    let lock: (i32, Option<DateTime<Utc>>) =
+        sqlx::query_as("SELECT failed_login_attempts, locked_until FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&state.pool)
+            .await?;
     if let Some(locked_until) = lock.1 {
         if locked_until > Utc::now() {
             let secs = (locked_until - Utc::now()).num_seconds().max(1);
@@ -109,12 +111,10 @@ async fn login(
         return Err(AppError::unauthorized("invalid email or password"));
     }
 
-    sqlx::query(
-        "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
-    )
-    .bind(user.id)
-    .execute(&state.pool)
-    .await?;
+    sqlx::query("UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.pool)
+        .await?;
 
     begin_login_mfa_flow(
         &state,
@@ -160,7 +160,10 @@ async fn logout(
     Ok((jar, Json(json!({ "ok": true }))))
 }
 
-async fn me(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<serde_json::Value>> {
+async fn me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
     let user = current_user(&state, &headers).await?;
     Ok(Json(json!({ "user": PublicUser::from(user) })))
 }
@@ -263,11 +266,10 @@ async fn my_activity(
     let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * page_size;
 
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = $1")
-            .bind(user.id)
-            .fetch_one(&state.pool)
-            .await?;
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = $1")
+        .bind(user.id)
+        .fetch_one(&state.pool)
+        .await?;
 
     let items = sqlx::query_as::<_, MyActivityRow>(
         r#"
@@ -286,7 +288,15 @@ async fn my_activity(
 
     // Security summary backing the header cards (self-service, distinct from the
     // global Overview snapshot).
-    let last_login = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, DateTime<Utc>)>(
+    let last_login = sqlx::query_as::<
+        _,
+        (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            DateTime<Utc>,
+        ),
+    >(
         "SELECT ip, browser, os, created_at FROM audit_logs \
          WHERE actor_user_id = $1 AND action = 'auth.login' \
          ORDER BY created_at DESC LIMIT 1",
@@ -295,11 +305,12 @@ async fn my_activity(
     .fetch_optional(&state.pool)
     .await?;
 
-    let active_sessions: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW()")
-            .bind(user.id)
-            .fetch_one(&state.pool)
-            .await?;
+    let active_sessions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW()",
+    )
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await?;
 
     let passkey_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1")

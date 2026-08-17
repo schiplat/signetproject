@@ -128,7 +128,10 @@ pub async fn register(
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
-    let v = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let v = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     v.strip_prefix("Bearer ").map(|s| s.trim().to_string())
 }
 

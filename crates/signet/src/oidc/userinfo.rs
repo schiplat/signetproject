@@ -16,10 +16,7 @@ struct AccessClaims {
     scope: Option<String>,
 }
 
-pub async fn userinfo(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> AppResult<Json<Value>> {
+pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Value>> {
     let auth = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -30,9 +27,10 @@ pub async fn userinfo(
 
     let pem = fs::read_to_string(&state.config.jwt_private_key_path)
         .map_err(|e| AppError::Anyhow(e.into()))?;
-    let decoding = DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(|e| AppError::Anyhow(e.into()))?;
+    let decoding =
+        DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(|e| AppError::Anyhow(e.into()))?;
     let mut validation = Validation::new(Algorithm::RS256);
-    validation.set_issuer(&[state.config.issuer.clone()]);
+    validation.set_issuer(std::slice::from_ref(&state.config.issuer));
     validation.validate_aud = false;
 
     let data = jsonwebtoken::decode::<AccessClaims>(token, &decoding, &validation)
@@ -44,7 +42,8 @@ pub async fn userinfo(
     let user = sqlx::query_as::<_, User>(
         r#"
         SELECT id, sub, email, display_name, password_hash, status, role,
-               mfa_required, totp_enabled, totp_secret, groups, phone, created_at, updated_at
+               mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone,
+               created_at, updated_at
         FROM users WHERE sub = $1 AND status = 'active'
         "#,
     )

@@ -3,7 +3,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 pub const USER_COLS: &str = "id, sub, email, display_name, password_hash, status, role, \
-    mfa_required, totp_enabled, totp_secret, groups, phone, created_at, updated_at";
+    mfa_required, must_change_password, totp_enabled, totp_secret, groups, phone, \
+    created_at, updated_at";
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct User {
@@ -16,6 +17,7 @@ pub struct User {
     pub status: String,
     pub role: String,
     pub mfa_required: bool,
+    pub must_change_password: bool,
     pub totp_enabled: bool,
     #[serde(skip_serializing)]
     pub totp_secret: Option<String>,
@@ -51,6 +53,7 @@ pub struct PublicUser {
     /// Convenience flag; true when role == "admin".
     pub is_admin: bool,
     pub mfa_required: bool,
+    pub must_change_password: bool,
     pub totp_enabled: bool,
     pub groups: Vec<String>,
     pub phone: Option<String>,
@@ -69,6 +72,7 @@ impl From<User> for PublicUser {
             role: u.role,
             is_admin,
             mfa_required: u.mfa_required,
+            must_change_password: u.must_change_password,
             totp_enabled: u.totp_enabled,
             groups: u.groups,
             phone: u.phone,

@@ -1,4 +1,6 @@
-use crate::auth::session::{cookie_value, destroy_session, user_from_session_token, SESSION_COOKIE};
+use crate::auth::session::{
+    cookie_value, destroy_session, user_from_session_token, SESSION_COOKIE,
+};
 use crate::client_ip::check_client_source_ip;
 use crate::crypto_util::{random_token, sha256_hex};
 use crate::error::{AppError, AppResult};
@@ -119,7 +121,10 @@ pub async fn authorize(
         if let Some(t) = &token {
             destroy_session(&state.pool, t).await?;
         }
-        return Ok(redirect_to_login(&q, prompt_without(prompt, "login").as_deref()));
+        return Ok(redirect_to_login(
+            &q,
+            prompt_without(prompt, "login").as_deref(),
+        ));
     }
 
     // Consent gate: skip only if the user has already granted every requested
@@ -133,7 +138,7 @@ pub async fn authorize(
     .await?;
     let fully_consented = granted
         .as_deref()
-        .map_or(false, |g| crate::oidc::scope_covered(g, &scope));
+        .is_some_and(|g| crate::oidc::scope_covered(g, &scope));
     if !fully_consented || has_prompt("consent") {
         if has_prompt("none") {
             return Err(AppError::bad_request("consent_required"));
@@ -166,7 +171,8 @@ pub async fn authorize(
     .execute(&state.pool)
     .await?;
 
-    let mut url = url::Url::parse(redirect_uri).map_err(|_| AppError::bad_request("bad redirect_uri"))?;
+    let mut url =
+        url::Url::parse(redirect_uri).map_err(|_| AppError::bad_request("bad redirect_uri"))?;
     url.query_pairs_mut()
         .append_pair("code", &code)
         .append_pair("state", state_val);

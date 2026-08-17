@@ -1,16 +1,14 @@
 mod totp_util;
 
 use crate::audit::{record, AuditEvent};
-use crate::auth::session::{
-    cookie_value, create_session, current_user, session_cookie,
-};
+use crate::auth::session::{cookie_value, create_session, current_user, session_cookie};
 use crate::error::{AppError, AppResult};
 use crate::models::{PublicUser, User, USER_COLS};
+use crate::password::set_user_password;
 use crate::roles::require_admin_role;
 use crate::state::AppState;
 use axum::extract::{ConnectInfo, Path, State};
 use axum::http::HeaderMap;
-use std::net::SocketAddr;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -19,6 +17,7 @@ use chrono::{Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::net::SocketAddr;
 use time::Duration as TimeDuration;
 use totp_util::{
     generate_recovery_codes, generate_totp_secret, hash_recovery_code, otpauth_uri,
@@ -32,7 +31,10 @@ const RECOVERY_CODE_COUNT: usize = 10;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/settings/mfa", get(get_mfa_settings).patch(patch_mfa_settings))
+        .route(
+            "/admin/settings/mfa",
+            get(get_mfa_settings).patch(patch_mfa_settings),
+        )
         .route("/mfa/verify", post(verify_mfa))
         .route("/mfa/enroll/start", post(enroll_start_challenge))
         .route("/mfa/enroll/confirm", post(enroll_confirm_challenge))
@@ -49,11 +51,10 @@ pub fn router() -> Router<AppState> {
 // --- settings ---
 
 pub async fn global_mfa_required(pool: &PgPool) -> AppResult<bool> {
-    let value: Option<Value> = sqlx::query_scalar(
-        "SELECT value FROM app_settings WHERE key = 'mfa.required_globally'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let value: Option<Value> =
+        sqlx::query_scalar("SELECT value FROM app_settings WHERE key = 'mfa.required_globally'")
+            .fetch_optional(pool)
+            .await?;
     Ok(value.and_then(|v| v.as_bool()).unwrap_or(false))
 }
 
@@ -243,13 +244,7 @@ async fn issue_session(
         ))
         .add(clear_mfa_cookie(state.config.cookie_secure));
 
-    crate::login_alert::track_login(
-        &state.pool,
-        &user,
-        ip.as_deref(),
-        user_agent.as_deref(),
-    )
-    .await;
+    crate::login_alert::track_login(&state.pool, &user, ip.as_deref(), user_agent.as_deref()).await;
 
     record(
         &state.pool,
@@ -331,6 +326,24 @@ async fn clear_user_mfa(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
     Ok(())
 }
 
+/// Issues a single-use forced password-change challenge before a session is
+/// established. Called after first-factor authentication succeeds (password or
+/// passkey) while `must_change_password` is still set.
+pub async fn challenge_password_change(
+    state: &AppState,
+    jar: CookieJar,
+    user: User,
+) -> AppResult<(CookieJar, Json<Value>)> {
+    let token = create_challenge(&state.pool, user.id, "change_password", None).await?;
+    let jar = jar.add(mfa_cookie(&token, state.config.cookie_secure));
+    Ok((
+        jar,
+        Json(json!({
+            "status": "password_change_required",
+        })),
+    ))
+}
+
 /// Called from auth login after password OK.
 pub async fn begin_login_mfa_flow(
     state: &AppState,
@@ -339,6 +352,10 @@ pub async fn begin_login_mfa_flow(
     ip: Option<String>,
     user_agent: Option<String>,
 ) -> AppResult<impl IntoResponse> {
+    if user.must_change_password {
+        return challenge_password_change(state, jar, user).await;
+    }
+
     let global = global_mfa_required(&state.pool).await?;
 
     if user.totp_enabled {
@@ -376,13 +393,7 @@ pub async fn begin_login_mfa_flow(
         state.config.cookie_secure,
         state.config.session_ttl_hours,
     ));
-    crate::login_alert::track_login(
-        &state.pool,
-        &user,
-        ip.as_deref(),
-        user_agent.as_deref(),
-    )
-    .await;
+    crate::login_alert::track_login(&state.pool, &user, ip.as_deref(), user_agent.as_deref()).await;
     record(
         &state.pool,
         AuditEvent {
@@ -404,6 +415,73 @@ pub async fn begin_login_mfa_flow(
             "user": PublicUser::from(user),
         })),
     ))
+}
+
+// --- forced password change (first login) ---
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ForcePasswordChangeBody {
+    new_password: String,
+}
+
+/// Completes the "change password on first login" challenge. The challenge is
+/// issued by `begin_login_mfa_flow` right after password verification, so the
+/// new password can be set without re-entering the current one. After the
+/// change the user continues through the normal MFA/session flow.
+pub(crate) async fn force_password_change(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(body): Json<ForcePasswordChangeBody>,
+) -> AppResult<impl IntoResponse> {
+    let ip = crate::http_util::client_ip(&headers, Some(addr));
+    let user_agent = crate::http_util::user_agent(&headers);
+
+    let challenge = load_challenge(&state.pool, &headers).await?;
+    if challenge.purpose != "change_password" {
+        return Err(AppError::bad_request("password change challenge required"));
+    }
+    let user = load_user(&state.pool, challenge.user_id).await?;
+    if user.status != "active" {
+        return Err(AppError::unauthorized("account disabled"));
+    }
+    if !user.must_change_password {
+        return Err(AppError::bad_request("password change not required"));
+    }
+
+    set_user_password(
+        &state.pool,
+        user.id,
+        &body.new_password,
+        state.config.password_min_length,
+        state.config.password_history_size,
+    )
+    .await?;
+
+    sqlx::query("UPDATE users SET must_change_password = FALSE, updated_at = NOW() WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.pool)
+        .await?;
+
+    delete_challenge(&state.pool, challenge.id).await?;
+
+    record(
+        &state.pool,
+        AuditEvent {
+            actor: Some(user.clone()),
+            action: "auth.password_change",
+            resource_type: "user",
+            resource_id: Some(user.id.to_string()),
+            detail: json!({ "forced": true }),
+            ip: ip.clone(),
+            user_agent: user_agent.clone(),
+        },
+    )
+    .await;
+
+    let user = load_user(&state.pool, user.id).await?;
+    begin_login_mfa_flow(&state, jar, user, ip, user_agent).await
 }
 
 // --- verify ---
@@ -510,7 +588,14 @@ async fn verify_mfa(
     }
 
     delete_challenge(&state.pool, challenge.id).await?;
-    issue_session(&state, jar, user, ip, crate::http_util::user_agent(&headers)).await
+    issue_session(
+        &state,
+        jar,
+        user,
+        ip,
+        crate::http_util::user_agent(&headers),
+    )
+    .await
 }
 
 // --- enroll (challenge / forced) ---

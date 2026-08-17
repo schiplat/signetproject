@@ -107,8 +107,8 @@ pub async fn user_from_session_token(pool: &PgPool, token: &str) -> AppResult<Op
     let user = sqlx::query_as::<_, User>(
         r#"
         SELECT u.id, u.sub, u.email, u.display_name, u.password_hash, u.status, u.role,
-               u.mfa_required, u.totp_enabled, u.totp_secret, u.groups, u.phone,
-               u.created_at, u.updated_at
+               u.mfa_required, u.must_change_password, u.totp_enabled, u.totp_secret,
+               u.groups, u.phone, u.created_at, u.updated_at
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = $1

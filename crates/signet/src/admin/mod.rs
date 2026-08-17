@@ -11,13 +11,13 @@ use crate::password::{
 };
 use crate::roles::{require_admin_role, require_staff, Role};
 use crate::state::AppState;
-use serde_json::json;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
 use serde::Deserialize;
+use serde_json::json;
 use uuid::Uuid;
 
 pub fn router() -> Router<AppState> {
@@ -30,9 +30,15 @@ pub fn router() -> Router<AppState> {
         .route("/admin/users/{id}", put(update_user).delete(delete_user))
         .route("/admin/users/{id}/disable", post(disable_user))
         .route("/admin/users/{id}/enable", post(enable_user))
-        .route("/admin/users/{id}/sessions/revoke", post(revoke_user_sessions))
+        .route(
+            "/admin/users/{id}/sessions/revoke",
+            post(revoke_user_sessions),
+        )
         .route("/admin/integrations", get(integrations))
-        .route("/admin/scim/token", post(scim_generate_token).delete(scim_revoke_token))
+        .route(
+            "/admin/scim/token",
+            post(scim_generate_token).delete(scim_revoke_token),
+        )
         .merge(clients::router())
 }
 
@@ -57,10 +63,11 @@ async fn integrations(
 }
 
 async fn scim_token_configured(pool: &sqlx::PgPool) -> AppResult<bool> {
-    let stored: Option<String> = sqlx::query_scalar("SELECT token_hash FROM scim_config WHERE id = TRUE")
-        .fetch_optional(pool)
-        .await?
-        .flatten();
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT token_hash FROM scim_config WHERE id = TRUE")
+            .fetch_optional(pool)
+            .await?
+            .flatten();
     Ok(stored.is_some())
 }
 
@@ -128,19 +135,13 @@ async fn scim_revoke_token(
     Ok(Json(json!({ "ok": true })))
 }
 
-pub(crate) async fn require_staff_user(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> AppResult<User> {
+pub(crate) async fn require_staff_user(state: &AppState, headers: &HeaderMap) -> AppResult<User> {
     let user = current_user(state, headers).await?;
     require_staff(&user)?;
     Ok(user)
 }
 
-pub(crate) async fn require_admin_user(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> AppResult<User> {
+pub(crate) async fn require_admin_user(state: &AppState, headers: &HeaderMap) -> AppResult<User> {
     let user = current_user(state, headers).await?;
     require_admin_role(&user)?;
     Ok(user)
@@ -187,10 +188,7 @@ struct AdminStats {
     recent_logins: Vec<RecentLogin>,
 }
 
-async fn stats(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> AppResult<Json<AdminStats>> {
+async fn stats(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<AdminStats>> {
     require_staff_user(&state, &headers).await?;
 
     let users_total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
@@ -204,11 +202,10 @@ async fn stats(
         sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE status = 'disabled'")
             .fetch_one(&state.pool)
             .await?;
-    let users_admin: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'",
-    )
-    .fetch_one(&state.pool)
-    .await?;
+    let users_admin: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'")
+            .fetch_one(&state.pool)
+            .await?;
     let users_manager: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM users WHERE role = 'manager' AND status = 'active'",
     )
@@ -401,10 +398,12 @@ pub(crate) async fn phone_exists(
                 .fetch_one(pool)
                 .await?
         }
-        None => sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE phone = $1")
-            .bind(phone)
-            .fetch_one(pool)
-            .await?,
+        None => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE phone = $1")
+                .bind(phone)
+                .fetch_one(pool)
+                .await?
+        }
     };
     Ok(n > 0)
 }
@@ -432,6 +431,7 @@ struct CreateUserBody {
     role: Option<String>,
     groups: Option<Vec<String>>,
     phone: Option<String>,
+    must_change_password: Option<bool>,
 }
 
 async fn create_user(
@@ -475,11 +475,12 @@ async fn create_user(
             return Err(AppError::bad_request("phone already exists"));
         }
     }
+    let must_change_password = body.must_change_password.unwrap_or(false);
 
     let user = sqlx::query_as::<_, User>(&format!(
         r#"
-        INSERT INTO users (id, sub, email, display_name, password_hash, status, role, groups, phone, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, $9)
+        INSERT INTO users (id, sub, email, display_name, password_hash, status, role, groups, phone, must_change_password, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, $10, $10)
         RETURNING {USER_COLS}
         "#
     ))
@@ -491,6 +492,7 @@ async fn create_user(
     .bind(role.as_str())
     .bind(groups)
     .bind(phone)
+    .bind(must_change_password)
     .bind(now)
     .fetch_one(&state.pool)
     .await
@@ -531,6 +533,7 @@ struct UpdateUserBody {
     password: Option<String>,
     status: Option<String>,
     mfa_required: Option<bool>,
+    must_change_password: Option<bool>,
     groups: Option<Vec<String>>,
     phone: Option<String>,
 }
@@ -598,6 +601,9 @@ async fn update_user(
     }
 
     let mfa_required = body.mfa_required.unwrap_or(target.mfa_required);
+    let must_change_password = body
+        .must_change_password
+        .unwrap_or(target.must_change_password);
     let groups = body.groups.clone().unwrap_or_else(|| target.groups.clone());
     let phone = if body.phone.is_some() {
         normalize_phone(body.phone)?
@@ -605,7 +611,9 @@ async fn update_user(
         target.phone.clone()
     };
     if let Some(p) = &phone {
-        if target.phone.as_deref() != Some(p.as_str()) && phone_exists(&state.pool, p, Some(id)).await? {
+        if target.phone.as_deref() != Some(p.as_str())
+            && phone_exists(&state.pool, p, Some(id)).await?
+        {
             return Err(AppError::bad_request("phone already exists"));
         }
     }
@@ -628,7 +636,7 @@ async fn update_user(
         r#"
         UPDATE users
         SET email = $2, display_name = $3, role = $4, status = $5,
-            mfa_required = $6, groups = $7, phone = $8, updated_at = NOW()
+            mfa_required = $6, must_change_password = $7, groups = $8, phone = $9, updated_at = NOW()
         WHERE id = $1
         RETURNING {USER_COLS}
         "#
@@ -639,6 +647,7 @@ async fn update_user(
     .bind(&role)
     .bind(&status)
     .bind(mfa_required)
+    .bind(must_change_password)
     .bind(groups)
     .bind(phone)
     .fetch_one(&state.pool)
@@ -672,9 +681,10 @@ async fn update_user(
                 "role": user.role,
                 "status": user.status,
                 "mfa_required": user.mfa_required,
+                "must_change_password": user.must_change_password,
             }),
-        ip: None,
-        user_agent: crate::http_util::user_agent(&headers),
+            ip: None,
+            user_agent: crate::http_util::user_agent(&headers),
         },
     )
     .await;
@@ -786,7 +796,7 @@ async fn batch_disable_users(
     if body.ids.is_empty() {
         return Err(AppError::bad_request("ids required"));
     }
-    if body.ids.iter().any(|id| *id == actor.id) {
+    if body.ids.contains(&actor.id) {
         return Err(AppError::bad_request("cannot disable yourself"));
     }
 

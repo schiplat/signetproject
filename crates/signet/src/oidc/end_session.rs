@@ -1,6 +1,4 @@
-use crate::auth::session::{
-    clear_session_cookie, cookie_value, destroy_session, SESSION_COOKIE,
-};
+use crate::auth::session::{clear_session_cookie, cookie_value, destroy_session, SESSION_COOKIE};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::extract::{Query, State};

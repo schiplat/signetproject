@@ -97,18 +97,22 @@ async fn confirm_reset(
 ) -> AppResult<Json<Value>> {
     let token_hash = sha256_hex(&body.token);
 
-    let row: (Uuid, Uuid, chrono::DateTime<Utc>, Option<chrono::DateTime<Utc>>) =
-        sqlx::query_as(
-            r#"
+    let row: (
+        Uuid,
+        Uuid,
+        chrono::DateTime<Utc>,
+        Option<chrono::DateTime<Utc>>,
+    ) = sqlx::query_as(
+        r#"
             SELECT id, user_id, expires_at, consumed_at
             FROM password_reset_tokens
             WHERE token_hash = $1
             "#,
-        )
-        .bind(&token_hash)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::bad_request("invalid or expired reset token"))?;
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::bad_request("invalid or expired reset token"))?;
 
     if row.3.is_some() || row.2 < Utc::now() {
         return Err(AppError::bad_request("invalid or expired reset token"));
@@ -138,15 +142,11 @@ async fn confirm_reset(
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn find_user_by_email(
-    state: &AppState,
-    email: &str,
-) -> AppResult<Option<(Uuid, String)>> {
-    let row: Option<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, email FROM users WHERE email = $1 AND status = 'active'",
-    )
-    .bind(email)
-    .fetch_optional(&state.pool)
-    .await?;
+async fn find_user_by_email(state: &AppState, email: &str) -> AppResult<Option<(Uuid, String)>> {
+    let row: Option<(Uuid, String)> =
+        sqlx::query_as("SELECT id, email FROM users WHERE email = $1 AND status = 'active'")
+            .bind(email)
+            .fetch_optional(&state.pool)
+            .await?;
     Ok(row)
 }

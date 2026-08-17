@@ -4,9 +4,11 @@ import { useRoute, useRouter } from "vue-router";
 import UiButton from "@/components/ui/UiButton.vue";
 import { useQrDataUrl } from "@/composables/useQrDataUrl";
 import {
+  loginChangePassword,
   mfaEnrollConfirm,
   mfaEnrollStart,
   verifyMfa,
+  type LoginResult,
   type PublicUser,
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
@@ -16,12 +18,15 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-type Step = "password" | "mfa" | "enroll" | "recovery_codes";
+type Step = "password" | "mfa" | "enroll" | "password_change" | "recovery_codes";
 
 const step = ref<Step>("password");
 const email = ref("");
 const password = ref("");
 const showPassword = ref(false);
+const newPassword = ref("");
+const confirmPassword = ref("");
+const showNewPassword = ref(false);
 const error = ref("");
 const loading = ref(false);
 
@@ -58,30 +63,58 @@ async function finishWithUser(user: PublicUser) {
   await router.replace(raw && !raw.startsWith("/login") ? raw : fallback);
 }
 
+async function handleLoginResult(res: LoginResult) {
+  if (res.status === "ok") {
+    await finishWithUser(res.user);
+    return;
+  }
+  if (res.status === "mfa_required") {
+    step.value = "mfa";
+    mfaCode.value = "";
+    mfaMethod.value = "totp";
+    return;
+  }
+  if (res.status === "enroll_required") {
+    const started = await mfaEnrollStart();
+    enrollSecret.value = started.secret;
+    enrollUri.value = started.otpauth_uri;
+    enrollCode.value = "";
+    step.value = "enroll";
+    return;
+  }
+  if (res.status === "password_change_required") {
+    newPassword.value = "";
+    confirmPassword.value = "";
+    showNewPassword.value = false;
+    step.value = "password_change";
+  }
+}
+
 async function handleLogin() {
   error.value = "";
   loading.value = true;
   try {
     const res = await auth.login(email.value.trim(), password.value);
-    if (res.status === "ok") {
-      await finishWithUser(res.user);
-      return;
-    }
-    if (res.status === "mfa_required") {
-      step.value = "mfa";
-      mfaCode.value = "";
-      mfaMethod.value = "totp";
-      return;
-    }
-    if (res.status === "enroll_required") {
-      const started = await mfaEnrollStart();
-      enrollSecret.value = started.secret;
-      enrollUri.value = started.otpauth_uri;
-      enrollCode.value = "";
-      step.value = "enroll";
-    }
+    await handleLoginResult(res);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Login failed";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function handlePasswordChange() {
+  error.value = "";
+  if (newPassword.value !== confirmPassword.value) {
+    error.value = "Passwords do not match";
+    return;
+  }
+  loading.value = true;
+  try {
+    const res = await loginChangePassword(newPassword.value);
+    await handleLoginResult(res);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Password change failed";
   } finally {
     loading.value = false;
   }
@@ -166,6 +199,7 @@ function backToPassword() {
           <template v-if="step === 'password'">Sign in to your identity provider</template>
           <template v-else-if="step === 'mfa'">Two-factor authentication</template>
           <template v-else-if="step === 'enroll'">Set up authenticator</template>
+          <template v-else-if="step === 'password_change'">Set a new password</template>
           <template v-else>Save your recovery codes</template>
         </p>
       </div>
@@ -287,6 +321,50 @@ function backToPassword() {
         <div v-if="error" class="field-error">{{ error }}</div>
         <UiButton type="submit" class="w-full" :disabled="loading">
           {{ loading ? "Confirming…" : "Enable MFA" }}
+        </UiButton>
+      </form>
+
+      <form v-else-if="step === 'password_change'" class="space-y-4" @submit.prevent="handlePasswordChange">
+        <p class="text-xs leading-relaxed text-muted-foreground">
+          You must set a new password before continuing. Your current password is temporary.
+        </p>
+        <div class="space-y-1.5">
+          <label class="type-label">New password</label>
+          <div class="relative">
+            <input
+              v-model="newPassword"
+              :type="showNewPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              placeholder="New password"
+              minlength="10"
+              title="10+ characters with upper, lower case and a digit"
+              class="field-input pr-14"
+              required
+            />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              @click="showNewPassword = !showNewPassword"
+            >
+              {{ showNewPassword ? "Hide" : "Show" }}
+            </button>
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <label class="type-label">Confirm password</label>
+          <input
+            v-model="confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Re-enter password"
+            minlength="10"
+            class="field-input"
+            required
+          />
+        </div>
+        <div v-if="error" class="field-error">{{ error }}</div>
+        <UiButton type="submit" class="w-full" :disabled="loading">
+          {{ loading ? "Saving…" : "Set new password" }}
         </UiButton>
       </form>
 

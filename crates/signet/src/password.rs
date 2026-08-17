@@ -69,14 +69,12 @@ pub async fn record_password_history(
     user_id: Uuid,
     password_hash: &str,
 ) -> AppResult<()> {
-    sqlx::query(
-        "INSERT INTO password_history (id, user_id, password_hash) VALUES ($1, $2, $3)",
-    )
-    .bind(Uuid::new_v4())
-    .bind(user_id)
-    .bind(password_hash)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO password_history (id, user_id, password_hash) VALUES ($1, $2, $3)")
+        .bind(Uuid::new_v4())
+        .bind(user_id)
+        .bind(password_hash)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -88,7 +86,8 @@ pub async fn set_user_password(
     min_length: usize,
     history_size: i64,
 ) -> AppResult<()> {
-    validate_password_strength(new_password, min_length).map_err(|e| AppError::bad_request(e.to_string()))?;
+    validate_password_strength(new_password, min_length)
+        .map_err(|e| AppError::bad_request(e.to_string()))?;
     validate_password_history(pool, user_id, new_password, history_size).await?;
     let hash = hash_password(new_password)?;
     record_password_history(pool, user_id, &hash).await?;

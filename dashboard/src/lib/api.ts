@@ -9,6 +9,7 @@ export type PublicUser = {
   role: UserRole;
   is_admin: boolean;
   mfa_required: boolean;
+  must_change_password: boolean;
   totp_enabled: boolean;
   groups: string[];
   phone: string | null;
@@ -18,7 +19,8 @@ export type PublicUser = {
 export type LoginResult =
   | { status: "ok"; user: PublicUser }
   | { status: "mfa_required" }
-  | { status: "enroll_required" };
+  | { status: "enroll_required" }
+  | { status: "password_change_required" };
 
 async function parseJson<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
@@ -35,6 +37,16 @@ export async function login(email: string, password: string) {
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ email, password }),
+  });
+  return parseJson<LoginResult>(res);
+}
+
+export async function loginChangePassword(newPassword: string) {
+  const res = await fetch("/api/v1/login/password-change", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ new_password: newPassword }),
   });
   return parseJson<LoginResult>(res);
 }
@@ -243,6 +255,7 @@ export async function createUser(body: {
   role?: UserRole;
   groups?: string[];
   phone?: string;
+  must_change_password?: boolean;
 }) {
   const res = await fetch("/api/v1/admin/users", {
     method: "POST",
@@ -262,6 +275,7 @@ export async function updateUser(
     password?: string;
     status?: string;
     mfa_required?: boolean;
+    must_change_password?: boolean;
     groups?: string[];
     phone?: string;
   },

@@ -23,7 +23,10 @@ const CLIENT_RETURNING: &str = r#"
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/clients", get(list_clients).post(create_client))
-        .route("/admin/clients/{id}", put(update_client).delete(delete_client))
+        .route(
+            "/admin/clients/{id}",
+            put(update_client).delete(delete_client),
+        )
         .route("/admin/clients/{id}/disable", post(disable_client))
         .route("/admin/clients/{id}/enable", post(enable_client))
         .route("/admin/clients/{id}/rotate-secret", post(rotate_secret))
@@ -105,9 +108,10 @@ async fn create_client(
         .transpose()?
         .unwrap_or_default();
     let pkce_required = body.pkce_required.unwrap_or(true);
-    let scopes = normalize_scopes(body.scopes.unwrap_or_else(|| {
-        vec!["openid".into(), "profile".into(), "email".into()]
-    }))?;
+    let scopes = normalize_scopes(
+        body.scopes
+            .unwrap_or_else(|| vec!["openid".into(), "profile".into(), "email".into()]),
+    )?;
 
     let ip_allowlist_enabled = body.ip_allowlist_enabled.unwrap_or(true);
     let allowed_cidrs = normalize_cidrs(&body.allowed_cidrs.unwrap_or_default())?;

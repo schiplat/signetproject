@@ -172,11 +172,7 @@ async fn list_audit_logs(
     };
 
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    let action_filter = q
-        .action
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let action_filter = q.action.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
     let allowed: Option<Vec<String>> = if actor.role_enum() == Role::Manager {
         Some(MANAGER_ACTIONS.iter().map(|s| (*s).to_string()).collect())
@@ -215,6 +211,7 @@ async fn list_audit_logs(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_logs(
     pool: &PgPool,
     allowed_actions: Option<&[String]>,
@@ -340,11 +337,7 @@ async fn export_audit_logs(
         None
     };
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    let action_filter = q
-        .action
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let action_filter = q.action.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
     let rows = if let Some(allowed) = &allowed {
         sqlx::query_as::<_, AuditLogRow>(
@@ -410,7 +403,9 @@ async fn export_audit_logs(
 
 fn to_csv(rows: &[AuditLogRow]) -> String {
     let mut out = String::with_capacity(rows.len() * 80);
-    out.push_str("created_at,actor_email,actor_role,action,resource_type,resource_id,ip,browser,os,detail\n");
+    out.push_str(
+        "created_at,actor_email,actor_role,action,resource_type,resource_id,ip,browser,os,detail\n",
+    );
     for r in rows {
         out.push_str(&format!(
             "{},{},{},{},{},{},{},{},{},{}\n",
@@ -439,9 +434,11 @@ fn csv_escape(s: &str) -> String {
 
 /// Deletes audit log rows older than the configured retention window.
 pub async fn prune_audit_logs(pool: &PgPool, retention_days: i64) -> AppResult<u64> {
-    let res = sqlx::query("DELETE FROM audit_logs WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')")
-        .bind(retention_days)
-        .execute(pool)
-        .await?;
+    let res = sqlx::query(
+        "DELETE FROM audit_logs WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')",
+    )
+    .bind(retention_days)
+    .execute(pool)
+    .await?;
     Ok(res.rows_affected())
 }

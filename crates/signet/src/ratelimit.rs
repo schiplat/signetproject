@@ -61,8 +61,11 @@ impl RateLimiter {
 
 /// axum middleware enforcing the global rate limit (see `AppState::rate_limiter`).
 pub async fn track(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    let key = client_ip(&req.headers(), req.extensions().get::<ConnectInfo<SocketAddr>>().cloned())
-        .unwrap_or_else(|| "unknown".to_string());
+    let key = client_ip(
+        req.headers(),
+        req.extensions().get::<ConnectInfo<SocketAddr>>().cloned(),
+    )
+    .unwrap_or_else(|| "unknown".to_string());
 
     if state.rate_limiter.allow(&key) {
         next.run(req).await

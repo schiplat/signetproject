@@ -60,11 +60,7 @@ fn wa_err(e: webauthn_rs::prelude::WebauthnError) -> AppError {
     AppError::bad_request(format!("webauthn: {e}"))
 }
 
-fn take_challenge(
-    store: &ChallengeStore,
-    token: &str,
-    kind: &str,
-) -> AppResult<ChallengeState> {
+fn take_challenge(store: &ChallengeStore, token: &str, kind: &str) -> AppResult<ChallengeState> {
     let mut map = store.lock().unwrap_or_else(|e| e.into_inner());
     // Opportunistic expiry sweep.
     let now = Instant::now();
@@ -74,7 +70,9 @@ fn take_challenge(
         .remove(token)
         .ok_or_else(|| AppError::bad_request("webauthn challenge expired or invalid"))?;
     if entry.expires <= now {
-        return Err(AppError::bad_request("webauthn challenge expired or invalid"));
+        return Err(AppError::bad_request(
+            "webauthn challenge expired or invalid",
+        ));
     }
     let matches = match &entry.state {
         ChallengeState::Register { .. } => kind == "register",
@@ -193,8 +191,10 @@ async fn register_finish(
 ) -> AppResult<Json<Value>> {
     let user = current_user(&state, &headers).await?;
 
-    let ChallengeState::Register { state: reg_state, user_id } =
-        take_challenge(&state.passkey_challenges, &body.token, "register")?
+    let ChallengeState::Register {
+        state: reg_state,
+        user_id,
+    } = take_challenge(&state.passkey_challenges, &body.token, "register")?
     else {
         return Err(AppError::bad_request("webauthn challenge type mismatch"));
     };
@@ -223,7 +223,11 @@ async fn register_finish(
     )
     .bind(id)
     .bind(user.id)
-    .bind(if name.is_empty() { "Passkey".to_string() } else { name })
+    .bind(if name.is_empty() {
+        "Passkey".to_string()
+    } else {
+        name
+    })
     .bind(&credential_id)
     .bind(passkey_json)
     .execute(&state.pool)
@@ -342,8 +346,10 @@ async fn login_finish(
 ) -> AppResult<impl IntoResponse> {
     let ip = crate::http_util::client_ip(&headers, Some(addr));
 
-    let ChallengeState::Authenticate { state: auth_state, user_id } =
-        take_challenge(&state.passkey_challenges, &body.token, "authenticate")?
+    let ChallengeState::Authenticate {
+        state: auth_state,
+        user_id,
+    } = take_challenge(&state.passkey_challenges, &body.token, "authenticate")?
     else {
         return Err(AppError::bad_request("webauthn challenge type mismatch"));
     };
@@ -381,6 +387,9 @@ async fn login_finish(
     }
 
     let user = load_user(&state, user_id).await?;
+    if user.must_change_password {
+        return crate::mfa::challenge_password_change(&state, jar, user).await;
+    }
     let token = create_session(
         &state.pool,
         user.id,

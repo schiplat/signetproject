@@ -18,22 +18,29 @@ pub fn router() -> Router<AppState> {
         .route("/scim/v2/Users", get(list_users).post(create_user))
         .route(
             "/scim/v2/Users/{id}",
-            get(get_user).put(put_user).patch(patch_user).delete(delete_user),
+            get(get_user)
+                .put(put_user)
+                .patch(patch_user)
+                .delete(delete_user),
         )
         .route("/scim/v2/Groups", get(list_groups).post(create_group))
         .route(
             "/scim/v2/Groups/{id}",
             get(get_group).patch(patch_group).delete(delete_group),
         )
-        .route("/scim/v2/ServiceProviderConfig", get(service_provider_config))
+        .route(
+            "/scim/v2/ServiceProviderConfig",
+            get(service_provider_config),
+        )
 }
 
 /// Enforce the SCIM bearer token. Returns 401 when SCIM has no configured token.
 async fn authorize(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
-    let stored: Option<String> = sqlx::query_scalar("SELECT token_hash FROM scim_config WHERE id = TRUE")
-        .fetch_optional(&state.pool)
-        .await?
-        .flatten();
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT token_hash FROM scim_config WHERE id = TRUE")
+            .fetch_optional(&state.pool)
+            .await?
+            .flatten();
 
     let Some(stored_hash) = stored else {
         return Err(AppError::unauthorized("SCIM is not configured"));
@@ -84,7 +91,8 @@ fn user_resource(u: &ScimUserRow) -> Value {
     })
 }
 
-const USER_SELECT: &str = "id, email, display_name, status, groups, external_id, created_at, updated_at";
+const USER_SELECT: &str =
+    "id, email, display_name, status, groups, external_id, created_at, updated_at";
 
 #[derive(Debug, Deserialize)]
 struct ListQuery {
@@ -100,7 +108,9 @@ async fn list_users(
     Query(q): Query<ListQuery>,
 ) -> AppResult<Json<Value>> {
     authorize(&state, &headers).await?;
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users").fetch_one(&state.pool).await?;
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.pool)
+        .await?;
     let rows = sqlx::query_as::<_, ScimUserRow>(&format!(
         "SELECT {USER_SELECT} FROM users ORDER BY created_at ASC LIMIT $1 OFFSET $2"
     ))
@@ -152,9 +162,15 @@ async fn create_user(
 
     let id = Uuid::new_v4();
     let sub = id.to_string();
-    let password = body.password.unwrap_or_else(|| crate::crypto_util::random_token(24));
+    let password = body
+        .password
+        .unwrap_or_else(|| crate::crypto_util::random_token(24));
     let password_hash = hash_password(&password)?;
-    let status = if body.active == Some(false) { "disabled" } else { "active" };
+    let status = if body.active == Some(false) {
+        "disabled"
+    } else {
+        "active"
+    };
 
     let row = sqlx::query_as::<_, ScimUserRow>(&format!(
         r#"
@@ -271,7 +287,12 @@ async fn put_user(
     .bind(email.as_deref())
     .bind(display_name.as_deref())
     .bind(status)
-    .bind(body.external_id.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+    .bind(
+        body.external_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty()),
+    )
     .fetch_one(&state.pool)
     .await?;
 
@@ -353,7 +374,9 @@ async fn delete_user(
     )
     .await;
 
-    Ok(Json(json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"] })))
+    Ok(Json(
+        json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"] }),
+    ))
 }
 
 // --- Groups ---
@@ -383,22 +406,18 @@ fn group_resource(g: &ScimGroupRow, members: Vec<Value>) -> Value {
 }
 
 async fn group_members(state: &AppState, name: &str) -> AppResult<Vec<Value>> {
-    let rows: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, email FROM users WHERE $1 = ANY(groups) ORDER BY email",
-    )
-    .bind(name)
-    .fetch_all(&state.pool)
-    .await?;
+    let rows: Vec<(Uuid, String)> =
+        sqlx::query_as("SELECT id, email FROM users WHERE $1 = ANY(groups) ORDER BY email")
+            .bind(name)
+            .fetch_all(&state.pool)
+            .await?;
     Ok(rows
         .into_iter()
         .map(|(id, email)| json!({ "value": id.to_string(), "display": email }))
         .collect())
 }
 
-async fn list_groups(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> AppResult<Json<Value>> {
+async fn list_groups(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Value>> {
     authorize(&state, &headers).await?;
     let rows = sqlx::query_as::<_, ScimGroupRow>(
         "SELECT id, display_name, external_id, created_at, updated_at FROM scim_groups ORDER BY display_name",
@@ -446,7 +465,12 @@ async fn create_group(
     )
     .bind(Uuid::new_v4())
     .bind(&name)
-    .bind(body.external_id.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+    .bind(
+        body.external_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty()),
+    )
     .fetch_one(&state.pool)
     .await
     .map_err(|e| match e {
@@ -523,10 +547,7 @@ async fn patch_group(
 
     for op in &body.operations {
         for m in &op.value {
-            let user_id = m
-                .value
-                .as_ref()
-                .and_then(|v| Uuid::parse_str(v).ok());
+            let user_id = m.value.as_ref().and_then(|v| Uuid::parse_str(v).ok());
             if let Some(user_id) = user_id {
                 add_group_to_user(&state, user_id, &group.display_name).await?;
             }
@@ -569,10 +590,15 @@ async fn delete_group(
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"] })))
+    Ok(Json(
+        json!({ "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"] }),
+    ))
 }
 
-async fn service_provider_config(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Value>> {
+async fn service_provider_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Value>> {
     authorize(&state, &headers).await?;
     Ok(Json(json!({
         "schemas": ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],

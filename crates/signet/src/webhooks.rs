@@ -56,7 +56,10 @@ struct CreateWebhookBody {
 }
 
 fn normalize_kind(kind: Option<String>) -> AppResult<String> {
-    let kind = kind.unwrap_or_else(|| "generic".into()).trim().to_lowercase();
+    let kind = kind
+        .unwrap_or_else(|| "generic".into())
+        .trim()
+        .to_lowercase();
     match kind.as_str() {
         "generic" | "feishu" => Ok(kind),
         other => Err(AppError::bad_request(format!(
@@ -87,7 +90,12 @@ async fn create_webhook(
     ))
     .bind(Uuid::new_v4())
     .bind(&url)
-    .bind(body.secret.as_deref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+    .bind(
+        body.secret
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+    )
     .bind(&kind)
     .fetch_one(&state.pool)
     .await?;
@@ -215,7 +223,10 @@ async fn deliver_one(
     payload: &Value,
 ) -> AppResult<()> {
     let (body, content_type) = if wh.kind == "feishu" {
-        (feishu_body(payload, wh.secret.as_deref()), "application/json")
+        (
+            feishu_body(payload, wh.secret.as_deref()),
+            "application/json",
+        )
     } else {
         (payload.to_string(), "application/json")
     };
@@ -241,7 +252,7 @@ async fn deliver_one(
     let (success, status_code, err) = match req.body(body).send().await {
         Ok(resp) => {
             let code = resp.status().as_u16();
-            let ok = code >= 200 && code < 300;
+            let ok = (200..300).contains(&code);
             (ok, Some(code as i16), None)
         }
         Err(e) => (false, None, Some(e.to_string())),

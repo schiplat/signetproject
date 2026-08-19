@@ -422,6 +422,7 @@ export async function updateClient(
     redirect_uris?: string[];
     post_logout_redirect_uris?: string[];
     pkce_required?: boolean;
+    scopes?: string[];
     ip_allowlist_enabled?: boolean;
     allowed_cidrs?: string[];
   },

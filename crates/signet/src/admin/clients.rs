@@ -76,6 +76,7 @@ struct UpdateClientBody {
     redirect_uris: Option<Vec<String>>,
     post_logout_redirect_uris: Option<Vec<String>>,
     pkce_required: Option<bool>,
+    scopes: Option<Vec<String>>,
     ip_allowlist_enabled: Option<bool>,
     allowed_cidrs: Option<Vec<String>>,
 }
@@ -228,6 +229,11 @@ async fn update_client(
         existing.post_logout_redirect_uris.clone()
     };
     let pkce_required = body.pkce_required.unwrap_or(existing.pkce_required);
+    let scopes = if let Some(s) = body.scopes {
+        normalize_scopes(s)?
+    } else {
+        existing.scopes.clone()
+    };
     let ip_allowlist_enabled = body
         .ip_allowlist_enabled
         .unwrap_or(existing.ip_allowlist_enabled);
@@ -248,8 +254,9 @@ async fn update_client(
         SET redirect_uris = $2,
             post_logout_redirect_uris = $3,
             pkce_required = $4,
-            ip_allowlist_enabled = $5,
-            allowed_cidrs = $6,
+            scopes = $5,
+            ip_allowlist_enabled = $6,
+            allowed_cidrs = $7,
             updated_at = NOW()
         WHERE id = $1
         RETURNING {CLIENT_RETURNING}
@@ -259,6 +266,7 @@ async fn update_client(
     .bind(&redirect_uris)
     .bind(&post_logout)
     .bind(pkce_required)
+    .bind(&scopes)
     .bind(ip_allowlist_enabled)
     .bind(&allowed_cidrs)
     .fetch_one(&state.pool)

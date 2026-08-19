@@ -33,12 +33,14 @@ const saving = ref(false);
 const formClientId = ref("");
 const formRedirects = ref("");
 const formPostLogoutRedirects = ref("");
+const formScopes = ref("");
 const formPkce = ref(true);
 const formIpAllowlist = ref(true);
 const formAllowedCidrs = ref("");
 
 const editRedirects = ref("");
 const editPostLogoutRedirects = ref("");
+const editScopes = ref("");
 const editPkce = ref(true);
 const editIpAllowlist = ref(true);
 const editAllowedCidrs = ref("");
@@ -106,6 +108,7 @@ function openCreate() {
   formClientId.value = "";
   formRedirects.value = "";
   formPostLogoutRedirects.value = "";
+  formScopes.value = "";
   formPkce.value = true;
   formIpAllowlist.value = true;
   formAllowedCidrs.value = "";
@@ -116,6 +119,7 @@ function openEdit(c: AdminClient) {
   editing.value = c;
   editRedirects.value = c.redirect_uris.join("\n");
   editPostLogoutRedirects.value = (c.post_logout_redirect_uris || []).join("\n");
+  editScopes.value = (c.scopes || []).join("\n");
   editPkce.value = c.pkce_required;
   editIpAllowlist.value = c.ip_allowlist_enabled;
   editAllowedCidrs.value = (c.allowed_cidrs || []).join("\n");
@@ -127,12 +131,14 @@ async function onCreate() {
   try {
     const redirect_uris = parseLines(formRedirects.value);
     const post_logout_redirect_uris = parseLines(formPostLogoutRedirects.value);
+    const scopes = parseLines(formScopes.value);
     const allowed_cidrs = parseLines(formAllowedCidrs.value);
     const res = await createClient({
       client_id: formClientId.value,
       redirect_uris,
       post_logout_redirect_uris,
       pkce_required: formPkce.value,
+      scopes: scopes.length ? scopes : undefined,
       ip_allowlist_enabled: formIpAllowlist.value,
       allowed_cidrs,
     });
@@ -159,6 +165,7 @@ async function onSaveEdit() {
       redirect_uris: parseLines(editRedirects.value),
       post_logout_redirect_uris: parseLines(editPostLogoutRedirects.value),
       pkce_required: editPkce.value,
+      scopes: parseLines(editScopes.value),
       ip_allowlist_enabled: editIpAllowlist.value,
       allowed_cidrs: parseLines(editAllowedCidrs.value),
     });
@@ -288,6 +295,11 @@ function copyBoth() {
                   >
                     Redirect URIs
                   </th>
+                  <th
+                    class="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+                  >
+                    Scopes
+                  </th>
                   <SortableTh
                     label="PKCE"
                     column="pkce_required"
@@ -339,7 +351,22 @@ function copyBoth() {
                       <p v-for="uri in c.redirect_uris" :key="uri" class="truncate font-mono">
                         {{ uri }}
                       </p>
+                      <template v-if="(c.post_logout_redirect_uris || []).length">
+                        <p class="pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+                          Logout
+                        </p>
+                        <p
+                          v-for="uri in c.post_logout_redirect_uris"
+                          :key="'lo-' + uri"
+                          class="truncate font-mono"
+                        >
+                          {{ uri }}
+                        </p>
+                      </template>
                     </div>
+                  </td>
+                  <td class="max-w-xs px-5 py-3 text-xs text-muted-foreground">
+                    <span class="font-mono text-[11px]">{{ (c.scopes || []).join(", ") }}</span>
                   </td>
                   <td class="px-5 py-3 text-xs">{{ c.pkce_required ? "required" : "optional" }}</td>
                   <td class="px-5 py-3 text-xs">
@@ -448,6 +475,16 @@ function copyBoth() {
               <input v-model="formPkce" type="checkbox" class="rounded" />
               Require PKCE (S256)
             </label>
+            <div>
+              <label class="mb-1 block text-[12px] font-medium">Scopes</label>
+              <textarea
+                v-model="formScopes"
+                rows="2"
+                placeholder="openid&#10;profile&#10;email"
+                class="field-input min-h-[3.5rem] resize-y py-2 font-mono text-xs"
+              />
+              <p class="type-meta mt-1">One per line (defaults to openid profile email)</p>
+            </div>
             <label class="flex items-start gap-2 text-sm">
               <input v-model="formIpAllowlist" type="checkbox" class="mt-0.5 rounded" />
               <span>
@@ -513,6 +550,20 @@ function copyBoth() {
               <input v-model="editPkce" type="checkbox" class="rounded" />
               Require PKCE (S256)
             </label>
+            <div>
+              <label class="mb-1 block text-[12px] font-medium">Scopes</label>
+              <textarea
+                v-model="editScopes"
+                rows="2"
+                placeholder="openid&#10;profile&#10;email"
+                class="field-input min-h-[3.5rem] resize-y py-2 font-mono text-xs"
+              />
+              <p class="type-meta mt-1">One per line. Must include openid.</p>
+            </div>
+            <div class="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              <span class="font-medium text-foreground">Grant types:</span>
+              <span class="font-mono">{{ (editing.grant_types || []).join(", ") }}</span>
+            </div>
             <label class="flex items-start gap-2 text-sm">
               <input v-model="editIpAllowlist" type="checkbox" class="mt-0.5 rounded" />
               <span>
